@@ -1,0 +1,20 @@
+[project]
+name = "moonarchive"
+version = "0.0.1"
+
+dependencies = [
+    "msgspec == 0.18.6",
+    "requests == 2.31.0",
+]
+
+[project.scripts]
+moonarchive = "moonarchive.app:main"
+
+[build-system]
+build-backend = 'setuptools.build_meta'
+requires = [
+    'setuptools',
+]
+
+[tool.black]
+line-length = 96

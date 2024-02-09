@@ -1,7 +1,10 @@
 #!/usr/bin/python3
 
+import operator
+import urllib.request
 from typing import Optional
 
+from .dash_manifest import YTDashManifest
 from .youtube import YTJSONStruct
 
 
@@ -25,7 +28,9 @@ class YTPlayerAdaptiveFormats(YTJSONStruct):
     mime_type: str
     target_duration_sec: float
 
-    # audio streams do not have a quality label specified
+    # video stream-specific fields
+    width: Optional[int] = None
+    height: Optional[int] = None
     quality_label: Optional[str] = None
 
 
@@ -33,6 +38,18 @@ class YTPlayerStreamingData(YTJSONStruct):
     expires_in_seconds: str
     adaptive_formats: list[YTPlayerAdaptiveFormats]
     dash_manifest_url: str
+
+    @property
+    def sorted_video_formats(self) -> list[YTPlayerAdaptiveFormats]:
+        return sorted(
+            (fmt for fmt in self.adaptive_formats if fmt.height),
+            key=operator.attrgetter("width"),
+            reverse=True,
+        )
+
+    def get_dash_manifest(self) -> YTDashManifest:
+        with urllib.request.urlopen(self.dash_manifest_url) as resp:
+            return YTDashManifest.from_manifest_text(resp.read().decode("utf8"))
 
 
 class YTPlayerVideoDetails(YTJSONStruct):
