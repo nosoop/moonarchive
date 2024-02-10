@@ -56,11 +56,11 @@ class YTPlayerVideoDetails(YTJSONStruct):
     video_id: str
     title: str
     length_seconds: str
-    is_live: bool
     channel_id: str
     is_owner_viewing: bool
     short_description: str
     is_live_content: bool
+    is_live: bool = False
 
 
 class YTPlayerThumbnail(YTJSONStruct):
