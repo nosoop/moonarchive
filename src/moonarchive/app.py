@@ -60,6 +60,7 @@ def main():
     parser = argparse.ArgumentParser()
 
     parser.add_argument("url", type=str)
+    parser.add_argument("-n", "--dry-run", action="store_true")
 
     args = parser.parse_args()
 
@@ -67,6 +68,9 @@ def main():
     manifest = resp.streaming_data.get_dash_manifest()
 
     target_duration = resp.streaming_data.adaptive_formats[0].target_duration_sec
+
+    if args.dry_run:
+        return
 
     # if you start late you must reset the PTS
     max_seq = 0
