@@ -67,7 +67,7 @@ def main():
     resp = extract_player_response(args.url)
     manifest = resp.streaming_data.get_dash_manifest()
 
-    target_duration = resp.streaming_data.adaptive_formats[0].target_duration_sec
+    timeout = resp.streaming_data.adaptive_formats[0].target_duration_sec
 
     if args.dry_run:
         return
@@ -80,7 +80,7 @@ def main():
         output_path = pathlib.Path("entry.f299.ts")
         print(f"downloading video chunk {fragnum}")
         with urllib.request.urlopen(
-            url.substitute(sequence=fragnum), timeout=target_duration * 2
+            url.substitute(sequence=fragnum), timeout=timeout * 2
         ) as resp, output_path.open("ab") as o:
             max_seq = int(resp.getheader("X-Head-Seqnum", -1))
             shutil.copyfileobj(resp, o)
@@ -91,7 +91,7 @@ def main():
         output_path = pathlib.Path("entry.f140.ts")
         print(f"downloading audio chunk {fragnum}")
         with urllib.request.urlopen(
-            url.substitute(sequence=fragnum), timeout=target_duration * 2
+            url.substitute(sequence=fragnum), timeout=timeout * 2
         ) as resp, output_path.open("ab") as o:
             max_seq = int(resp.getheader("X-Head-Seqnum", -1))
             shutil.copyfileobj(resp, o)
