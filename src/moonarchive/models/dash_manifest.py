@@ -24,7 +24,12 @@ class YTDashManifest(msgspec.Struct):
 
         for r in reps:
             itag = r.get("id")
-            url_template = string.Template(r.find("{*}BaseURL").text + "sq/${sequence}")
+            base_url_elem = r.find("{*}BaseURL")
+
+            if base_url_elem is None:
+                continue
+
+            url_template = string.Template(base_url_elem.text + "sq/${sequence}")
 
             try:
                 int(itag)
