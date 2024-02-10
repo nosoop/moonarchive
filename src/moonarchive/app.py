@@ -67,34 +67,41 @@ def main():
     resp = extract_player_response(args.url)
     manifest = resp.streaming_data.get_dash_manifest()
 
+    preferred_format, *_ = resp.streaming_data.sorted_video_formats
     timeout = resp.streaming_data.adaptive_formats[0].target_duration_sec
 
     if args.dry_run:
         return
 
-    # if you start late you must reset the PTS
+    video_id = resp.video_details.video_id
+    output_video_path = pathlib.Path(f"{video_id}.f{preferred_format.itag}.ts")
+    output_audio_path = pathlib.Path(f"{video_id}.f140.ts")
+
+    # if you're dealing with a partial stream you should reset the PTS
     max_seq = 0
     for fragnum in range(10):
-        url = manifest.format_urls[299]
+        url = manifest.format_urls[preferred_format.itag]
 
-        output_path = pathlib.Path("entry.f299.ts")
+        # formats may change throughout the stream, and this should coincide with a sequence reset
+        # in that case we would need to restart the download on a second file
+
         print(f"downloading video chunk {fragnum}")
+
         with urllib.request.urlopen(
             url.substitute(sequence=fragnum), timeout=timeout * 2
-        ) as resp, output_path.open("ab") as o:
-            max_seq = int(resp.getheader("X-Head-Seqnum", -1))
-            shutil.copyfileobj(resp, o)
+        ) as fresp, output_video_path.open("ab") as o:
+            max_seq = int(fresp.getheader("X-Head-Seqnum", -1))
+            shutil.copyfileobj(fresp, o)
 
     max_seq = 0
     for fragnum in range(10):
         url = manifest.format_urls[140]
-        output_path = pathlib.Path("entry.f140.ts")
         print(f"downloading audio chunk {fragnum}")
         with urllib.request.urlopen(
             url.substitute(sequence=fragnum), timeout=timeout * 2
-        ) as resp, output_path.open("ab") as o:
-            max_seq = int(resp.getheader("X-Head-Seqnum", -1))
-            shutil.copyfileobj(resp, o)
+        ) as fresp, output_audio_path.open("ab") as o:
+            max_seq = int(fresp.getheader("X-Head-Seqnum", -1))
+            shutil.copyfileobj(fresp, o)
 
     subprocess.run(
         [
@@ -104,13 +111,13 @@ def main():
             "-stats",
             "-y",
             "-i",
-            "entry.f299.ts",
+            str(output_video_path),
             "-i",
-            "entry.f140.ts",
+            str(output_audio_path),
             "-c",
             "copy",
             "-movflags",
             "faststart",
-            "entry.mp4",
+            f"{video_id}.mp4",
         ]
     )
