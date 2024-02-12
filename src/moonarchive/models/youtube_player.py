@@ -77,6 +77,10 @@ class YTPlayerMicroformatRendererBroadcastDetails(YTJSONStruct):
     is_live_now: bool
     start_timestamp: str
 
+    @property
+    def start_datetime(self):
+        return datetime.datetime.fromisoformat(self.start_timestamp)
+
 
 class YTPlayerMicroformatRenderer(YTJSONStruct):
     thumbnail: YTPlayerMicroformatRendererThumbnails
@@ -92,6 +96,6 @@ class YTPlayerMicroformat(YTJSONStruct):
 class YTPlayerResponse(YTJSONStruct):
     response_context: YTPlayerResponseContext
     playability_status: YTPlayerPlayabilityStatus
-    streaming_data: YTPlayerStreamingData
     video_details: YTPlayerVideoDetails
     microformat: YTPlayerMicroformat
+    streaming_data: Optional[YTPlayerStreamingData] = None

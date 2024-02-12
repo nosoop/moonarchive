@@ -65,6 +65,14 @@ def main():
     args = parser.parse_args()
 
     resp = extract_player_response(args.url)
+
+    if not resp.streaming_data:
+        timestamp = (
+            resp.microformat.player_microformat_renderer.live_broadcast_details.start_timestamp
+        )
+        print(f"No stream available (scheduled to start at {timestamp})")
+        return
+
     manifest = resp.streaming_data.get_dash_manifest()
 
     preferred_format, *_ = resp.streaming_data.sorted_video_formats
