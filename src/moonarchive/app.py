@@ -107,7 +107,7 @@ def frag_iterator(resp: YTPlayerResponse, itag: int):
             elif err.code == 404:
                 # we're done if the stream is no longer live and a duration is rendered
                 if (
-                    not resp.microformat.player_microformat_renderer.live_broadcast_details.is_live_now
+                    not resp.microformat.live_broadcast_details.is_live_now
                     and resp.video_details.num_length_seconds
                 ):
                     return
@@ -132,13 +132,10 @@ def main():
     parser.add_argument("-n", "--dry-run", action="store_true")
 
     args = parser.parse_args()
-
     resp = extract_player_response(args.url)
 
     if not resp.streaming_data:
-        timestamp = (
-            resp.microformat.player_microformat_renderer.live_broadcast_details.start_timestamp
-        )
+        timestamp = resp.microformat.live_broadcast_details.start_timestamp
         print(f"No stream available (scheduled to start at {timestamp})")
         return
 
