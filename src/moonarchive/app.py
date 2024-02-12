@@ -4,6 +4,7 @@ import argparse
 import html.parser
 import pathlib
 import shutil
+import socket
 import subprocess
 import urllib.request
 from typing import Optional
@@ -56,6 +57,63 @@ def extract_player_response(url: str):
     return msgspec.json.decode(response_extractor.result, type=YTPlayerResponse)
 
 
+def frag_iterator(resp: YTPlayerResponse, itag: int):
+    # yields fragment information
+    # this should refresh the manifest as needed and yield the next available fragment
+    # if the format changes, signal a reset on the consumer somehow
+    # maybe create a FormatChangedException?
+    manifest = resp.streaming_data.get_dash_manifest()
+    timeout = resp.streaming_data.adaptive_formats[0].target_duration_sec
+
+    video_url = f"https://youtu.be/{resp.video_details.video_id}"
+    cur_seq = 0
+    max_seq = 0
+    num_empty_results = 0
+    while True:
+        url = manifest.format_urls[itag]
+
+        # formats may change throughout the stream, and this should coincide with a sequence reset
+        # in that case we would need to restart the download on a second file
+
+        # TODO: gracefully handle the following
+        #       - end of stream
+        #       - extended stream dropouts (we should refresh manifest / player)
+        #       - unavailable formats
+        #       - sequence resets
+
+        try:
+            with urllib.request.urlopen(
+                url.substitute(sequence=cur_seq), timeout=timeout * 2
+            ) as fresp:
+                new_max_seq = int(fresp.getheader("X-Head-Seqnum", -1))
+                yield fresp
+
+                if new_max_seq < max_seq:
+                    # this would be considered very bad
+                    # it's currently not known if the stream would actually report this, or if we
+                    # would need to fetch a new manifest / player response
+                    pass
+                max_seq = new_max_seq
+            print(f"fragments {itag}: {cur_seq}/{max_seq}")
+            cur_seq += 1
+        except socket.timeout:
+            continue
+        except urllib.error.HTTPError as err:
+            resp = extract_player_response(video_url)
+            if err.code == 403:
+                # retrieve a fresh manifest
+                manifest = resp.streaming_data.get_dash_manifest()
+            elif err.code == 404:
+                # we're done if the stream is no longer live and a duration is rendered
+                if (
+                    not resp.microformat.player_microformat_renderer.live_broadcast_details.is_live_now
+                    and resp.video_details.num_length_seconds
+                ):
+                    return
+        except urllib.error.URLError:
+            continue
+
+
 def main():
     parser = argparse.ArgumentParser()
 
@@ -86,29 +144,15 @@ def main():
     output_audio_path = pathlib.Path(f"{video_id}.f140.ts")
 
     # if you're dealing with a partial stream you should reset the PTS
-    max_seq = 0
-    for fragnum in range(10):
-        url = manifest.format_urls[preferred_format.itag]
-
+    for fresp in frag_iterator(resp, preferred_format.itag):
         # formats may change throughout the stream, and this should coincide with a sequence reset
         # in that case we would need to restart the download on a second file
 
-        print(f"downloading video chunk {fragnum}")
-
-        with urllib.request.urlopen(
-            url.substitute(sequence=fragnum), timeout=timeout * 2
-        ) as fresp, output_video_path.open("ab") as o:
-            max_seq = int(fresp.getheader("X-Head-Seqnum", -1))
+        with output_video_path.open("ab") as o:
             shutil.copyfileobj(fresp, o)
 
-    max_seq = 0
-    for fragnum in range(10):
-        url = manifest.format_urls[140]
-        print(f"downloading audio chunk {fragnum}")
-        with urllib.request.urlopen(
-            url.substitute(sequence=fragnum), timeout=timeout * 2
-        ) as fresp, output_audio_path.open("ab") as o:
-            max_seq = int(fresp.getheader("X-Head-Seqnum", -1))
+    for fresp in frag_iterator(resp, 140):
+        with output_audio_path.open("ab") as o:
             shutil.copyfileobj(fresp, o)
 
     subprocess.run(

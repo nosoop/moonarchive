@@ -62,6 +62,10 @@ class YTPlayerVideoDetails(YTJSONStruct):
     is_live_content: bool
     is_live: bool = False
 
+    @property
+    def num_length_seconds(self):
+        return int(self.length_seconds)
+
 
 class YTPlayerThumbnail(YTJSONStruct):
     url: str
