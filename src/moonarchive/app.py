@@ -144,6 +144,9 @@ def main():
     preferred_format, *_ = resp.streaming_data.sorted_video_formats
     timeout = resp.streaming_data.adaptive_formats[0].target_duration_sec
 
+    print(f"Video title: {resp.video_details.title}")
+    print(f"Selected format: {preferred_format.quality_label}")
+
     if args.dry_run:
         return
 
