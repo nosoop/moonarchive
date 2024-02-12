@@ -1,6 +1,7 @@
 #!/usr/bin/python3
 
 import argparse
+import concurrent.futures
 import html.parser
 import pathlib
 import shutil
@@ -114,6 +115,16 @@ def frag_iterator(resp: YTPlayerResponse, itag: int):
             continue
 
 
+def stream_downloader(resp: YTPlayerResponse, format_itag: int, output_path: pathlib.Path):
+    # thread for managing the download of a specific format
+    for fresp in frag_iterator(resp, format_itag):
+        # formats may change throughout the stream, and this should coincide with a sequence reset
+        # in that case we would need to restart the download on a second file
+
+        with output_path.open("ab") as o:
+            shutil.copyfileobj(fresp, o)
+
+
 def main():
     parser = argparse.ArgumentParser()
 
@@ -143,17 +154,16 @@ def main():
     output_video_path = pathlib.Path(f"{video_id}.f{preferred_format.itag}.ts")
     output_audio_path = pathlib.Path(f"{video_id}.f140.ts")
 
-    # if you're dealing with a partial stream you should reset the PTS
-    for fresp in frag_iterator(resp, preferred_format.itag):
-        # formats may change throughout the stream, and this should coincide with a sequence reset
-        # in that case we would need to restart the download on a second file
-
-        with output_video_path.open("ab") as o:
-            shutil.copyfileobj(fresp, o)
-
-    for fresp in frag_iterator(resp, 140):
-        with output_audio_path.open("ab") as o:
-            shutil.copyfileobj(fresp, o)
+    with concurrent.futures.ProcessPoolExecutor() as executor:
+        # tasks to write streams to file
+        video_stream_dl = executor.submit(
+            stream_downloader, resp, preferred_format.itag, output_video_path
+        )
+        audio_stream_dl = executor.submit(stream_downloader, resp, 140, output_audio_path)
+        for future in concurrent.futures.as_completed((video_stream_dl, audio_stream_dl)):
+            exc = future.exception()
+            if exc:
+                print(type(exc), exc)
 
     subprocess.run(
         [
