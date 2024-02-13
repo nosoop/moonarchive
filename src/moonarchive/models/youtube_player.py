@@ -1,5 +1,6 @@
 #!/usr/bin/python3
 
+import datetime
 import operator
 import urllib.request
 from typing import Optional
@@ -79,11 +80,15 @@ class YTPlayerMicroformatRendererThumbnails(YTJSONStruct):
 
 class YTPlayerMicroformatRendererBroadcastDetails(YTJSONStruct):
     is_live_now: bool
-    start_timestamp: str
+
+    # this is not present on unstarted livestreams that have passed their scheduled time
+    start_timestamp: Optional[str] = None
 
     @property
-    def start_datetime(self):
-        return datetime.datetime.fromisoformat(self.start_timestamp)
+    def start_datetime(self) -> Optional[datetime.datetime]:
+        if self.start_timestamp:
+            return datetime.datetime.fromisoformat(self.start_timestamp)
+        return None
 
 
 class YTPlayerMicroformatRenderer(YTJSONStruct):
