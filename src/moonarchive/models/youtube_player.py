@@ -93,9 +93,9 @@ class YTPlayerMicroformatRendererBroadcastDetails(YTJSONStruct):
 
 class YTPlayerMicroformatRenderer(YTJSONStruct):
     thumbnail: YTPlayerMicroformatRendererThumbnails
-    live_broadcast_details: YTPlayerMicroformatRendererBroadcastDetails
     publish_date: str
     upload_date: str
+    live_broadcast_details: Optional[YTPlayerMicroformatRendererBroadcastDetails] = None
 
 
 class YTPlayerMicroformat(YTJSONStruct):
@@ -109,6 +109,9 @@ class YTPlayerMicroformat(YTJSONStruct):
 class YTPlayerResponse(YTJSONStruct):
     response_context: YTPlayerResponseContext
     playability_status: YTPlayerPlayabilityStatus
-    video_details: YTPlayerVideoDetails
-    microformat: YTPlayerMicroformat
+
+    video_details: Optional[YTPlayerVideoDetails] = None
+    microformat: Optional[YTPlayerMicroformat] = None
+
+    # this is not present on streams happening in the future
     streaming_data: Optional[YTPlayerStreamingData] = None
