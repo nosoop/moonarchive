@@ -3,6 +3,7 @@
 import argparse
 import concurrent.futures
 import html.parser
+import io
 import pathlib
 import shutil
 import socket
@@ -87,7 +88,11 @@ def frag_iterator(resp: YTPlayerResponse, itag: int):
                 url.substitute(sequence=cur_seq), timeout=timeout * 2
             ) as fresp:
                 new_max_seq = int(fresp.getheader("X-Head-Seqnum", -1))
-                yield fresp
+
+                # copying to a buffer here ensures this function handles errors related to the request
+                buffer = io.BytesIO(fresp.read())
+
+                yield buffer
 
                 if new_max_seq < max_seq:
                     # this would be considered very bad
