@@ -1,7 +1,9 @@
 #!/usr/bin/python3
 
 import datetime
+import itertools
 import operator
+import urllib.parse
 import urllib.request
 from typing import Optional
 
@@ -47,6 +49,20 @@ class YTPlayerStreamingData(YTJSONStruct):
             key=operator.attrgetter("width"),
             reverse=True,
         )
+
+    @property
+    def dash_manifest_id(self) -> Optional[str]:
+        # youtube may create multiple manifests for a stream, see
+        # https://github.com/Kethsar/ytarchive/issues/56
+        # this causes downloads to stall
+
+        # this value is also present in the manifest itself; retrieve it the same way
+
+        # parameters in the manifest are slash-delimited
+        # extract the subpath within 'id'
+        params = urllib.parse.urlparse(self.dash_manifest_url).path.split("/")
+        _, id, *_ = itertools.dropwhile(lambda x: x != "id", params)
+        return id
 
     def get_dash_manifest(self) -> YTDashManifest:
         with urllib.request.urlopen(self.dash_manifest_url) as resp:
