@@ -4,6 +4,7 @@ import argparse
 import concurrent.futures
 import datetime
 import html.parser
+import http.client
 import io
 import pathlib
 import shutil
@@ -116,6 +117,11 @@ def frag_iterator(resp: YTPlayerResponse, itag: int):
                 # retrieve a fresh manifest
                 manifest = resp.streaming_data.get_dash_manifest()
             elif err.code == 404:
+                if not resp.microformat.live_broadcast_details:
+                    # video is private?
+                    return
+
+                # the server has indicated that no fragment is present
                 # we're done if the stream is no longer live and a duration is rendered
                 if (
                     not resp.microformat.live_broadcast_details.is_live_now
@@ -136,6 +142,8 @@ def frag_iterator(resp: YTPlayerResponse, itag: int):
                     current_manifest_id = resp.streaming_data.dash_manifest_id
                     return
         except urllib.error.URLError:
+            continue
+        except http.client.IncompleteRead:
             continue
 
 
