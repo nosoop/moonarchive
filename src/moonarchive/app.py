@@ -2,12 +2,14 @@
 
 import argparse
 import concurrent.futures
+import datetime
 import html.parser
 import io
 import pathlib
 import shutil
 import socket
 import subprocess
+import time
 import urllib.request
 from typing import Optional
 
@@ -139,10 +141,30 @@ def main():
     args = parser.parse_args()
     resp = extract_player_response(args.url)
 
-    if not resp.streaming_data:
-        timestamp = resp.microformat.live_broadcast_details.start_timestamp
-        print(f"No stream available (scheduled to start at {timestamp})")
+    if resp.playability_status.status in ("ERROR", "LOGIN_REQUIRED"):
+        print(f"{resp.playability_status.status}: {resp.playability_status.reason}")
         return
+
+    while not resp.streaming_data:
+        timestamp = resp.microformat.live_broadcast_details.start_datetime
+
+        seconds_wait = 20.0
+        if timestamp:
+            now = datetime.datetime.now(datetime.timezone.utc)
+
+            seconds_remaining = (timestamp - now).total_seconds()
+            print(
+                f"No stream available (scheduled to start in {int(seconds_remaining)}s at {timestamp})"
+            )
+
+            if seconds_remaining > 0:
+                seconds_wait = seconds_remaining
+        else:
+            print(f"No stream available, polling")
+
+        time.sleep(seconds_wait)
+
+        resp = extract_player_response(args.url)
 
     manifest = resp.streaming_data.get_dash_manifest()
 
