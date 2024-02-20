@@ -72,6 +72,10 @@ def frag_iterator(resp: YTPlayerResponse, itag: int):
     video_url = f"https://youtu.be/{resp.video_details.video_id}"
     cur_seq = 0
     max_seq = 0
+
+    current_manifest_id = resp.streaming_data.dash_manifest_id
+
+    # this is supposed to increment on failure before we refetch the player response
     num_empty_results = 0
     while True:
         url = manifest.format_urls[itag]
@@ -102,7 +106,7 @@ def frag_iterator(resp: YTPlayerResponse, itag: int):
                     # would need to fetch a new manifest / player response
                     pass
                 max_seq = new_max_seq
-            print(f"fragments {itag}: {cur_seq}/{max_seq}")
+            print(f"fragment {itag}: {cur_seq}/{max_seq}, manifest id {current_manifest_id}")
             cur_seq += 1
         except socket.timeout:
             continue
@@ -117,6 +121,19 @@ def frag_iterator(resp: YTPlayerResponse, itag: int):
                     not resp.microformat.live_broadcast_details.is_live_now
                     and resp.video_details.num_length_seconds
                 ):
+                    return
+
+                if current_manifest_id != resp.streaming_data.dash_manifest_id:
+                    print(
+                        "manifest ID changed from",
+                        current_manifest_id,
+                        "to",
+                        resp.streaming_data.dash_manifest_id,
+                        "- manually issue a redownload for now",
+                    )
+                    cur_seq = 0
+                    max_seq = 0
+                    current_manifest_id = resp.streaming_data.dash_manifest_id
                     return
         except urllib.error.URLError:
             continue
