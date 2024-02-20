@@ -21,15 +21,20 @@ class YTPlayerResponseContext(YTJSONStruct):
 
 class YTPlayerPlayabilityStatus(YTJSONStruct):
     status: str
-    playable_in_embed: bool
+    playable_in_embed: bool = False
     reason: Optional[str] = None
+
+    # may be present when status is LIVE_STREAM_OFFLINE
+    # live_streamability: Optional[YTPlayerLiveStreamability] = None
 
 
 class YTPlayerAdaptiveFormats(YTJSONStruct):
     itag: int
-    url: str
     mime_type: str
-    target_duration_sec: float
+
+    # this is not present in non-live streams
+    target_duration_sec: Optional[float] = None
+    url: Optional[str] = None
 
     # video stream-specific fields
     width: Optional[int] = None
@@ -40,7 +45,7 @@ class YTPlayerAdaptiveFormats(YTJSONStruct):
 class YTPlayerStreamingData(YTJSONStruct):
     expires_in_seconds: str
     adaptive_formats: list[YTPlayerAdaptiveFormats]
-    dash_manifest_url: str
+    dash_manifest_url: Optional[str] = None
 
     @property
     def sorted_video_formats(self) -> list[YTPlayerAdaptiveFormats]:
