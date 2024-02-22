@@ -62,6 +62,13 @@ def extract_player_response(url: str):
     return msgspec.json.decode(response_extractor.result, type=YTPlayerResponse)
 
 
+class FragmentInfo(msgspec.Struct, kw_only=True):
+    cur_seq: int
+    max_seq: int
+    manifest_id: str
+    buffer: io.BytesIO
+
+
 def frag_iterator(resp: YTPlayerResponse, itag: int):
     # yields fragment information
     # this should refresh the manifest as needed and yield the next available fragment
@@ -99,7 +106,13 @@ def frag_iterator(resp: YTPlayerResponse, itag: int):
                 # copying to a buffer here ensures this function handles errors related to the request
                 buffer = io.BytesIO(fresp.read())
 
-                yield buffer
+                info = FragmentInfo(
+                    cur_seq=cur_seq,
+                    max_seq=new_max_seq,
+                    manifest_id=current_manifest_id,
+                    buffer=buffer,
+                )
+                yield info
 
                 if new_max_seq < max_seq:
                     # this would be considered very bad
@@ -149,12 +162,13 @@ def frag_iterator(resp: YTPlayerResponse, itag: int):
 
 def stream_downloader(resp: YTPlayerResponse, format_itag: int, output_path: pathlib.Path):
     # thread for managing the download of a specific format
-    for fresp in frag_iterator(resp, format_itag):
+    # we need this to be more robust against available format changes mid-stream
+    for frag in frag_iterator(resp, format_itag):
         # formats may change throughout the stream, and this should coincide with a sequence reset
         # in that case we would need to restart the download on a second file
 
         with output_path.open("ab") as o:
-            shutil.copyfileobj(fresp, o)
+            shutil.copyfileobj(frag.buffer, o)
 
 
 def main():
