@@ -258,6 +258,8 @@ def main():
             "copy",
             "-movflags",
             "faststart",
+            "-fflags",
+            "bitexact",
             f"{video_id}.mp4",
         ]
     )
