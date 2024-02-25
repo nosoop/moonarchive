@@ -170,6 +170,10 @@ def stream_downloader(resp: YTPlayerResponse, format_itag: int, output_path: pat
         with output_path.open("ab") as o:
             shutil.copyfileobj(frag.buffer, o)
 
+        frag.buffer.seek(0)
+        with pathlib.Path(f"{frag.manifest_id}.f{format_itag}.ts").open("ab") as o:
+            shutil.copyfileobj(frag.buffer, o)
+
 
 def main():
     parser = argparse.ArgumentParser()
