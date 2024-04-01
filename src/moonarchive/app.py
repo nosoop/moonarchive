@@ -180,6 +180,7 @@ def main():
 
     parser.add_argument("url", type=str)
     parser.add_argument("-n", "--dry-run", action="store_true")
+    parser.add_argument("--write-description", action="store_true")
 
     args = parser.parse_args()
     resp = extract_player_response(args.url)
@@ -223,6 +224,10 @@ def main():
     video_id = resp.video_details.video_id
     output_video_path = pathlib.Path(f"{video_id}.f{preferred_format.itag}.ts")
     output_audio_path = pathlib.Path(f"{video_id}.f140.ts")
+
+    if args.write_description:
+        desc_path = pathlib.Path(f"{video_id}.description")
+        desc_path.write_text(resp.video_details.short_description, encoding="utf8")
 
     with concurrent.futures.ProcessPoolExecutor() as executor:
         # tasks to write streams to file
