@@ -204,7 +204,7 @@ def stream_downloader(
                 frag.buffer.getbuffer().nbytes,
             )
         )
-    print(f"download process for format {format_itag} complete")
+    status_queue.put(messages.DownloadJobEndedMessage(format_itag))
 
 
 def main():

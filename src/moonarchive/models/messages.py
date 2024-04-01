@@ -13,3 +13,7 @@ class FragmentMessage(BaseMessage, tag="fragment"):
     itag: int
     manifest_id: str
     fragment_size: int
+
+
+class DownloadJobEndedMessage(BaseMessage, tag="download-job-ended"):
+    itag: int

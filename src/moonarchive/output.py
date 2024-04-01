@@ -52,6 +52,9 @@ class YTArchiveMessageHandler(BaseMessageHandler, tag="ytarchive"):
                     self.video_seq = msg.current_fragment
                 self.total_downloaded += msg.fragment_size
                 self.current_manifest = msg.manifest_id
+            case msgtypes.DownloadJobEndedMessage:
+                print()
+                print(f"Download job finished for format {msg.itag}")
             case _:
                 pass
 
