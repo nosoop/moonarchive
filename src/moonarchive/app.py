@@ -240,6 +240,10 @@ def main():
         status_proc.join()
         return
 
+    status_queue.put(
+        messages.StreamInfoMessage(resp.video_details.author, resp.video_details.title)
+    )
+
     if args.dry_run:
         handler_stop.set()
         status_proc.join()
@@ -274,11 +278,7 @@ def main():
     preferred_format, *_ = resp.streaming_data.sorted_video_formats
     timeout = resp.streaming_data.adaptive_formats[0].target_duration_sec
 
-    print(f"Video title: {resp.video_details.title}")
-    print(f"Selected format: {preferred_format.quality_label}")
-
-    if args.dry_run:
-        return
+    # TODO print selected format
 
     video_id = resp.video_details.video_id
     output_video_path = pathlib.Path(f"{video_id}.f{preferred_format.itag}.ts")

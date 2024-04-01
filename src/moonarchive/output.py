@@ -35,7 +35,7 @@ class YTArchiveMessageHandler(BaseMessageHandler, tag="ytarchive"):
     total_downloaded: int = 0
     current_manifest: str = ""
 
-    def internal_print(self):
+    def print_frag_status_update(self):
         print(
             f"\r{colorama.ansi.clear_line()}Video Fragments: {self.video_seq + 1}; Audio Fragments: {self.audio_seq + 1}; Max Fragments: {self.max_seq + 1}; Total Downloaded: {self.human_total_size}; Manifest: {self.current_manifest}",
             end="",
@@ -52,13 +52,15 @@ class YTArchiveMessageHandler(BaseMessageHandler, tag="ytarchive"):
                     self.video_seq = msg.current_fragment
                 self.total_downloaded += msg.fragment_size
                 self.current_manifest = msg.manifest_id
+                self.print_frag_status_update()
             case msgtypes.DownloadJobEndedMessage:
                 print()
                 print(f"Download job finished for format {msg.itag}")
+            case msgtypes.StreamInfoMessage:
+                print(f"Channel: {msg.channel_name}")
+                print(f"Video Title: {msg.video_title}")
             case _:
                 pass
-
-        self.internal_print()
 
     @property
     def human_total_size(self):

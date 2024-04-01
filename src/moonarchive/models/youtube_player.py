@@ -78,6 +78,7 @@ class YTPlayerVideoDetails(YTJSONStruct):
     video_id: str
     title: str
     length_seconds: str
+    author: str
     channel_id: str
     is_owner_viewing: bool
     short_description: str

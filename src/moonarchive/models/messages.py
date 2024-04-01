@@ -15,5 +15,10 @@ class FragmentMessage(BaseMessage, tag="fragment"):
     fragment_size: int
 
 
+class StreamInfoMessage(BaseMessage, tag="stream-info"):
+    channel_name: str
+    video_title: str
+
+
 class DownloadJobEndedMessage(BaseMessage, tag="download-job-ended"):
     itag: int
