@@ -180,6 +180,12 @@ def main():
 
     parser.add_argument("url", type=str)
     parser.add_argument("-n", "--dry-run", action="store_true")
+    parser.add_argument(
+        "--poll-interval",
+        type=int,
+        help="Rechecks the stream at an interval prior to its scheduled start time",
+        default=0,
+    )
     parser.add_argument("--write-description", action="store_true")
 
     args = parser.parse_args()
@@ -192,6 +198,7 @@ def main():
     while not resp.streaming_data:
         timestamp = resp.microformat.live_broadcast_details.start_datetime
 
+        # post-scheduled recheck interval
         seconds_wait = 20.0
         if timestamp:
             now = datetime.datetime.now(datetime.timezone.utc)
@@ -203,6 +210,8 @@ def main():
 
             if seconds_remaining > 0:
                 seconds_wait = seconds_remaining
+                if args.poll_interval > 0 and seconds_wait > args.poll_interval:
+                    seconds_wait = args.poll_interval
         else:
             print(f"No stream available, polling")
 
