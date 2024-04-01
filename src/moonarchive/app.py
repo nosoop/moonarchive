@@ -146,6 +146,11 @@ def frag_iterator(resp: YTPlayerResponse, itag: int):
                 ):
                     return
 
+                if not resp.streaming_data:
+                    # stream is offline
+                    time.sleep(15)
+                    continue
+
                 if current_manifest_id != resp.streaming_data.dash_manifest_id:
                     print(
                         "manifest ID changed from",
