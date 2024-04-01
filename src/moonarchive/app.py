@@ -162,7 +162,6 @@ def frag_iterator(resp: YTPlayerResponse, itag: int):
                     cur_seq = 0
                     max_seq = 0
                     current_manifest_id = resp.streaming_data.dash_manifest_id
-                    return
         except urllib.error.URLError:
             continue
         except http.client.IncompleteRead:
