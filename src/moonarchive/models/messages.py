@@ -20,5 +20,10 @@ class StreamInfoMessage(BaseMessage, tag="stream-info"):
     video_title: str
 
 
+class StreamVideoFormatMessage(BaseMessage, tag="stream-video-format"):
+    quality_label: str
+    # TODO: write codec (vp9 / h264)
+
+
 class DownloadJobEndedMessage(BaseMessage, tag="download-job-ended"):
     itag: int

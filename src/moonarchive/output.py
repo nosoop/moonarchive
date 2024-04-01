@@ -59,6 +59,8 @@ class YTArchiveMessageHandler(BaseMessageHandler, tag="ytarchive"):
             case msgtypes.StreamInfoMessage:
                 print(f"Channel: {msg.channel_name}")
                 print(f"Video Title: {msg.video_title}")
+            case msgtypes.StreamVideoFormatMessage:
+                print(f"Selected quality: {msg.quality_label}")
             case _:
                 pass
 

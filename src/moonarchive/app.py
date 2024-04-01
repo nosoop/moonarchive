@@ -278,7 +278,7 @@ def main():
     preferred_format, *_ = resp.streaming_data.sorted_video_formats
     timeout = resp.streaming_data.adaptive_formats[0].target_duration_sec
 
-    # TODO print selected format
+    status_queue.put(messages.StreamVideoFormatMessage(preferred_format.quality_label))
 
     video_id = resp.video_details.video_id
     output_video_path = pathlib.Path(f"{video_id}.f{preferred_format.itag}.ts")
