@@ -226,10 +226,28 @@ def main():
     parser.add_argument("--write-description", action="store_true")
 
     args = parser.parse_args()
+
+    # set up output handler
+    handler = moonarchive.output.YTArchiveMessageHandler()
+    status_manager = mp.Manager()
+
+    status_queue = status_manager.Queue()
+    handler_stop = status_manager.Event()
+
+    status_proc = mp.Process(target=status_handler, args=(handler, status_queue, handler_stop))
+    status_proc.start()
+
     resp = extract_player_response(args.url)
 
     if resp.playability_status.status in ("ERROR", "LOGIN_REQUIRED"):
         print(f"{resp.playability_status.status}: {resp.playability_status.reason}")
+        handler_stop.set()
+        status_proc.join()
+        return
+
+    if args.dry_run:
+        handler_stop.set()
+        status_proc.join()
         return
 
     while not resp.streaming_data:
@@ -276,15 +294,6 @@ def main():
         desc_path.write_text(resp.video_details.short_description, encoding="utf8")
 
     with concurrent.futures.ProcessPoolExecutor() as executor:
-        handler = moonarchive.output.YTArchiveMessageHandler()
-        status_manager = mp.Manager()
-
-        status_queue = status_manager.Queue()
-        handler_stop = status_manager.Event()
-
-        # tasks to receive events from stream downloading jobs
-        status_proc = executor.submit(status_handler, handler, status_queue, handler_stop)
-
         # tasks to write streams to file
         video_stream_dl = executor.submit(
             stream_downloader,
@@ -302,6 +311,7 @@ def main():
                 print(type(exc), exc)
 
         handler_stop.set()
+    status_proc.join()
 
     print()
 
