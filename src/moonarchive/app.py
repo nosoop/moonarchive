@@ -134,7 +134,7 @@ def frag_iterator(resp: YTPlayerResponse, itag: int):
                 # retrieve a fresh manifest
                 manifest = resp.streaming_data.get_dash_manifest()
             elif err.code == 404:
-                if not resp.microformat.live_broadcast_details:
+                if not resp.microformat or not resp.microformat.live_broadcast_details:
                     # video is private?
                     return
 

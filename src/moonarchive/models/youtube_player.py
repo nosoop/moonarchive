@@ -131,6 +131,7 @@ class YTPlayerResponse(YTJSONStruct):
     response_context: YTPlayerResponseContext
     playability_status: YTPlayerPlayabilityStatus
 
+    # not present on streams that were made private
     video_details: Optional[YTPlayerVideoDetails] = None
     microformat: Optional[YTPlayerMicroformat] = None
 
