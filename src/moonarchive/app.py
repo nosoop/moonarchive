@@ -124,11 +124,6 @@ def frag_iterator(resp: YTPlayerResponse, itag: int):
                 )
                 yield info
 
-                if new_max_seq < max_seq:
-                    # this would be considered very bad
-                    # it's currently not known if the stream would actually report this, or if we
-                    # would need to fetch a new manifest / player response
-                    pass
                 max_seq = new_max_seq
             cur_seq += 1
         except socket.timeout:
