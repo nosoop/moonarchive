@@ -6,17 +6,27 @@ import datetime
 import html.parser
 import http.client
 import io
+import multiprocessing as mp
 import pathlib
+import queue
 import shutil
 import socket
 import subprocess
 import time
 import urllib.request
+
+import colorama
+import colorama.ansi
+import requests
+
+colorama.just_fix_windows_console()
+
 from typing import Optional
 
 import msgspec
-import requests
 
+import moonarchive.models.messages as messages
+import moonarchive.output
 from moonarchive.models.dash_manifest import YTDashManifest
 from moonarchive.models.youtube_player import YTPlayerResponse
 
@@ -120,7 +130,6 @@ def frag_iterator(resp: YTPlayerResponse, itag: int):
                     # would need to fetch a new manifest / player response
                     pass
                 max_seq = new_max_seq
-            print(f"fragment {itag}: {cur_seq}/{max_seq}, manifest id {current_manifest_id}")
             cur_seq += 1
         except socket.timeout:
             continue
@@ -160,7 +169,25 @@ def frag_iterator(resp: YTPlayerResponse, itag: int):
             continue
 
 
-def stream_downloader(resp: YTPlayerResponse, format_itag: int, output_path: pathlib.Path):
+def status_handler(
+    handler: moonarchive.output.BaseMessageHandler,
+    status_queue: mp.Queue,
+    handler_stop: mp.Event,
+):
+    while not handler_stop.is_set() or not status_queue.empty():
+        try:
+            message = status_queue.get(timeout=1.0)
+            handler.handle_message(message)
+        except queue.Empty:
+            pass
+
+
+def stream_downloader(
+    resp: YTPlayerResponse,
+    format_itag: int,
+    output_path: pathlib.Path,
+    status_queue: mp.Queue,
+):
     # thread for managing the download of a specific format
     # we need this to be more robust against available format changes mid-stream
     for frag in frag_iterator(resp, format_itag):
@@ -173,6 +200,17 @@ def stream_downloader(resp: YTPlayerResponse, format_itag: int, output_path: pat
         frag.buffer.seek(0)
         with pathlib.Path(f"{frag.manifest_id}.f{format_itag}.ts").open("ab") as o:
             shutil.copyfileobj(frag.buffer, o)
+
+        status_queue.put(
+            messages.FragmentMessage(
+                frag.cur_seq,
+                frag.max_seq,
+                format_itag,
+                frag.manifest_id,
+                frag.buffer.getbuffer().nbytes,
+            )
+        )
+    print(f"download process for format {format_itag} complete")
 
 
 def main():
@@ -239,15 +277,34 @@ def main():
         desc_path.write_text(resp.video_details.short_description, encoding="utf8")
 
     with concurrent.futures.ProcessPoolExecutor() as executor:
+        handler = moonarchive.output.YTArchiveMessageHandler()
+        status_manager = mp.Manager()
+
+        status_queue = status_manager.Queue()
+        handler_stop = status_manager.Event()
+
+        # tasks to receive events from stream downloading jobs
+        status_proc = executor.submit(status_handler, handler, status_queue, handler_stop)
+
         # tasks to write streams to file
         video_stream_dl = executor.submit(
-            stream_downloader, resp, preferred_format.itag, output_video_path
+            stream_downloader,
+            resp,
+            preferred_format.itag,
+            output_video_path,
+            status_queue,
         )
-        audio_stream_dl = executor.submit(stream_downloader, resp, 140, output_audio_path)
+        audio_stream_dl = executor.submit(
+            stream_downloader, resp, 140, output_audio_path, status_queue
+        )
         for future in concurrent.futures.as_completed((video_stream_dl, audio_stream_dl)):
             exc = future.exception()
             if exc:
                 print(type(exc), exc)
+
+        handler_stop.set()
+
+    print()
 
     subprocess.run(
         [
