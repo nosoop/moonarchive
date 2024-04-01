@@ -305,11 +305,13 @@ def main():
 
     print()
 
+    # raising the log level to 'error' instead of 'warning' suppresses MOOV atom warnings
+    # those warnings being dumped to stdout has a non-negligible performance impact
     subprocess.run(
         [
             "ffmpeg",
             "-v",
-            "warning",
+            "error",
             "-stats",
             "-y",
             "-seekable",
