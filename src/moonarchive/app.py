@@ -152,13 +152,8 @@ def frag_iterator(resp: YTPlayerResponse, itag: int):
                     continue
 
                 if current_manifest_id != resp.streaming_data.dash_manifest_id:
-                    print(
-                        "manifest ID changed from",
-                        current_manifest_id,
-                        "to",
-                        resp.streaming_data.dash_manifest_id,
-                        "- manually issue a redownload for now",
-                    )
+                    # player response has a different manfifest ID than what we're aware of
+                    # reset the sequence counters
                     cur_seq = 0
                     max_seq = 0
                     current_manifest_id = resp.streaming_data.dash_manifest_id
