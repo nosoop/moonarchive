@@ -6,6 +6,7 @@ import datetime
 import html.parser
 import http.client
 import io
+import json
 import multiprocessing as mp
 import pathlib
 import queue
@@ -188,11 +189,33 @@ def stream_downloader(
         # formats may change throughout the stream, and this should coincide with a sequence reset
         # in that case we would need to restart the download on a second file
 
+        output_stream_path = pathlib.Path(f"{frag.manifest_id}.f{format_itag}.ts")
+
+        # we dump our fragment lengths in case we need to extract the raw segments
+        #
+        # this should help in situations where the stream is rotated between portrait and
+        # landscape; that maintains the same manifest, but ffmpeg ends up applying the initial
+        # dimensions for the entire video - that causes a broken image for the rest of the stream
+        with output_stream_path.with_suffix(".fragdata.txt").open(
+            "at", encoding="utf8"
+        ) as fragdata:
+            fragdata.write(
+                json.dumps(
+                    {
+                        "cur_seq": frag.cur_seq,
+                        "length": frag.buffer.getbuffer().nbytes,
+                    }
+                )
+                + "\n"
+            )
+
+        # TODO: drop the concept of output_path as a file and only use a directory
+        # that said, we'll need to figure out which manifests we accessed
         with output_path.open("ab") as o:
             shutil.copyfileobj(frag.buffer, o)
 
         frag.buffer.seek(0)
-        with pathlib.Path(f"{frag.manifest_id}.f{format_itag}.ts").open("ab") as o:
+        with output_stream_path.open("ab") as o:
             shutil.copyfileobj(frag.buffer, o)
 
         status_queue.put(
