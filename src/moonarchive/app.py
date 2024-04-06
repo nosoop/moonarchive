@@ -287,8 +287,10 @@ def main():
             now = datetime.datetime.now(datetime.timezone.utc)
 
             seconds_remaining = (timestamp - now).total_seconds()
-            print(
-                f"No stream available (scheduled to start in {int(seconds_remaining)}s at {timestamp})"
+            status_queue.put(
+                messages.StringMessage(
+                    f"No stream available (scheduled to start in {int(seconds_remaining)}s at {timestamp})"
+                )
             )
 
             if seconds_remaining > 0:
@@ -296,7 +298,7 @@ def main():
                 if args.poll_interval > 0 and seconds_wait > args.poll_interval:
                     seconds_wait = args.poll_interval
         else:
-            print(f"No stream available, polling")
+            status_queue.put(messages.StringMessage(f"No stream available, polling"))
 
         time.sleep(seconds_wait)
 

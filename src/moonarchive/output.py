@@ -44,6 +44,8 @@ class YTArchiveMessageHandler(BaseMessageHandler, tag="ytarchive"):
 
     def handle_message(self, msg: msgtypes.BaseMessage):
         match type(msg):
+            case msgtypes.StringMessage:
+                print(msg.text)
             case msgtypes.FragmentMessage:
                 self.max_seq = max(self.max_seq, msg.max_fragments)
                 if msg.itag == 140:
