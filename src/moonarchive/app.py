@@ -80,7 +80,7 @@ class FragmentInfo(msgspec.Struct, kw_only=True):
     buffer: io.BytesIO
 
 
-def frag_iterator(resp: YTPlayerResponse, itag: int):
+def frag_iterator(resp: YTPlayerResponse, itag: int, status_queue: mp.Queue):
     # yields fragment information
     # this should refresh the manifest as needed and yield the next available fragment
     # if the format changes, signal a reset on the consumer somehow
@@ -185,7 +185,7 @@ def stream_downloader(
 ):
     # thread for managing the download of a specific format
     # we need this to be more robust against available format changes mid-stream
-    for frag in frag_iterator(resp, format_itag):
+    for frag in frag_iterator(resp, format_itag, status_queue):
         # formats may change throughout the stream, and this should coincide with a sequence reset
         # in that case we would need to restart the download on a second file
 
