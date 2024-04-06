@@ -1,6 +1,7 @@
 #!/usr/bin/python3
 
 import argparse
+import collections
 import concurrent.futures
 import datetime
 import html.parser
@@ -83,8 +84,6 @@ class FragmentInfo(msgspec.Struct, kw_only=True):
 def frag_iterator(resp: YTPlayerResponse, itag: int, status_queue: mp.Queue):
     # yields fragment information
     # this should refresh the manifest as needed and yield the next available fragment
-    # if the format changes, signal a reset on the consumer somehow
-    # maybe create a FormatChangedException?
     manifest = resp.streaming_data.get_dash_manifest()
     timeout = resp.streaming_data.adaptive_formats[0].target_duration_sec
 
@@ -180,16 +179,21 @@ def status_handler(
 def stream_downloader(
     resp: YTPlayerResponse,
     format_itag: int,
-    output_path: pathlib.Path,
+    output_directory: pathlib.Path,
     status_queue: mp.Queue,
-):
+) -> dict[str, set[str]]:
+    # record the manifests and formats we're downloading
+    # this is used later to determine which files to mux together
+    manifest_outputs = collections.defaultdict(set)
+
     # thread for managing the download of a specific format
     # we need this to be more robust against available format changes mid-stream
     for frag in frag_iterator(resp, format_itag, status_queue):
         # formats may change throughout the stream, and this should coincide with a sequence reset
         # in that case we would need to restart the download on a second file
 
-        output_stream_path = pathlib.Path(f"{frag.manifest_id}.f{format_itag}.ts")
+        output_prefix = f"{frag.manifest_id}.f{format_itag}"
+        output_stream_path = output_directory / f"{output_prefix}.ts"
 
         # we dump our fragment lengths in case we need to extract the raw segments
         #
@@ -209,10 +213,7 @@ def stream_downloader(
                 + "\n"
             )
 
-        # TODO: drop the concept of output_path as a file and only use a directory
-        # that said, we'll need to figure out which manifests we accessed
-        with output_path.open("ab") as o:
-            shutil.copyfileobj(frag.buffer, o)
+        manifest_outputs[frag.manifest_id].add(output_prefix)
 
         frag.buffer.seek(0)
         with output_stream_path.open("ab") as o:
@@ -228,6 +229,7 @@ def stream_downloader(
             )
         )
     status_queue.put(messages.DownloadJobEndedMessage(format_itag))
+    return manifest_outputs
 
 
 def main():
@@ -299,67 +301,76 @@ def main():
     manifest = resp.streaming_data.get_dash_manifest()
 
     preferred_format, *_ = resp.streaming_data.sorted_video_formats
+    preferred_audio_format, *_ = resp.streaming_data.sorted_audio_formats
     timeout = resp.streaming_data.adaptive_formats[0].target_duration_sec
 
     status_queue.put(messages.StreamVideoFormatMessage(preferred_format.quality_label))
 
     video_id = resp.video_details.video_id
-    output_video_path = pathlib.Path(f"{video_id}.f{preferred_format.itag}.ts")
-    output_audio_path = pathlib.Path(f"{video_id}.f140.ts")
 
     if args.write_description:
         desc_path = pathlib.Path(f"{video_id}.description")
         desc_path.write_text(resp.video_details.short_description, encoding="utf8")
 
+    workdir = pathlib.Path(".")
+    outdir = workdir
+
+    manifest_outputs = collections.defaultdict(set)
     with concurrent.futures.ProcessPoolExecutor() as executor:
         # tasks to write streams to file
         video_stream_dl = executor.submit(
-            stream_downloader,
-            resp,
-            preferred_format.itag,
-            output_video_path,
-            status_queue,
+            stream_downloader, resp, preferred_format.itag, workdir, status_queue
         )
         audio_stream_dl = executor.submit(
-            stream_downloader, resp, 140, output_audio_path, status_queue
+            stream_downloader, resp, preferred_audio_format.itag, workdir, status_queue
         )
         for future in concurrent.futures.as_completed((video_stream_dl, audio_stream_dl)):
             exc = future.exception()
             if exc:
                 print(type(exc), exc)
+            else:
+                for manifest_id, output_prefixes in future.result().items():
+                    manifest_outputs[manifest_id] |= output_prefixes
 
         handler_stop.set()
     status_proc.join()
 
     print()
+    print(manifest_outputs)
 
-    # raising the log level to 'error' instead of 'warning' suppresses MOOV atom warnings
-    # those warnings being dumped to stdout has a non-negligible performance impact
-    subprocess.run(
-        [
+    # output a file for each manifest we received fragments for
+    for manifest_id, output_prefixes in manifest_outputs.items():
+        # raising the log level to 'error' instead of 'warning' suppresses MOOV atom warnings
+        # those warnings being dumped to stdout has a non-negligible performance impact
+        command = [
             "ffmpeg",
             "-v",
             "error",
             "-stats",
             "-y",
-            "-seekable",
-            "0",
-            "-thread_queue_size",
-            "1024",
-            "-i",
-            str(output_video_path),
-            "-seekable",
-            "0",
-            "-thread_queue_size",
-            "1024",
-            "-i",
-            str(output_audio_path),
-            "-c",
-            "copy",
-            "-movflags",
-            "faststart",
-            "-fflags",
-            "bitexact",
-            f"{video_id}.mp4",
         ]
-    )
+
+        for output_prefix in output_prefixes:
+            command.extend(
+                (
+                    "-seekable",
+                    "0",
+                    "-thread_queue_size",
+                    "1024",
+                    "-i",
+                    str(workdir / f"{output_prefix}.ts"),
+                )
+            )
+
+        command.extend(
+            (
+                "-c",
+                "copy",
+                "-movflags",
+                "faststart",
+                "-fflags",
+                "bitexact",
+            )
+        )
+        command.extend((str(outdir / f"{manifest_id}.mp4"),))
+        subprocess.run(command)

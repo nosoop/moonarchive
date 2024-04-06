@@ -56,6 +56,13 @@ class YTPlayerStreamingData(YTJSONStruct):
         )
 
     @property
+    def sorted_audio_formats(self) -> list[YTPlayerAdaptiveFormats]:
+        return sorted(
+            (fmt for fmt in self.adaptive_formats if "audio" in fmt.mime_type),
+            reverse=True,
+        )
+
+    @property
     def dash_manifest_id(self) -> Optional[str]:
         # youtube may create multiple manifests for a stream, see
         # https://github.com/Kethsar/ytarchive/issues/56
