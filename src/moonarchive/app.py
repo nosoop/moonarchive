@@ -266,7 +266,11 @@ def main():
         return
 
     status_queue.put(
-        messages.StreamInfoMessage(resp.video_details.author, resp.video_details.title)
+        messages.StreamInfoMessage(
+            resp.video_details.author,
+            resp.video_details.title,
+            resp.microformat.live_broadcast_details.start_datetime,
+        )
     )
 
     if args.dry_run:

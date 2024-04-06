@@ -1,5 +1,7 @@
 #!/usr/bin/python3
 
+import datetime
+
 import msgspec
 
 
@@ -18,6 +20,7 @@ class FragmentMessage(BaseMessage, tag="fragment"):
 class StreamInfoMessage(BaseMessage, tag="stream-info"):
     channel_name: str
     video_title: str
+    start_datetime: datetime.datetime
 
 
 class StreamVideoFormatMessage(BaseMessage, tag="stream-video-format"):
