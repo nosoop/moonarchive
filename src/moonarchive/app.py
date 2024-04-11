@@ -13,6 +13,7 @@ import pathlib
 import queue
 import shutil
 import socket
+import ssl
 import subprocess
 import time
 import urllib.request
@@ -133,7 +134,7 @@ def frag_iterator(resp: YTPlayerResponse, itag: int, status_queue: mp.Queue):
             if err.code == 403:
                 # retrieve a fresh manifest
                 manifest = resp.streaming_data.get_dash_manifest()
-            elif err.code == 404:
+            elif err.code in (404, 503):
                 if not resp.microformat or not resp.microformat.live_broadcast_details:
                     # video is private?
                     return
@@ -157,6 +158,8 @@ def frag_iterator(resp: YTPlayerResponse, itag: int, status_queue: mp.Queue):
                     cur_seq = 0
                     max_seq = 0
                     current_manifest_id = resp.streaming_data.dash_manifest_id
+        except ssl.SSLWantReadError:
+            continue
         except urllib.error.URLError:
             continue
         except http.client.IncompleteRead:
