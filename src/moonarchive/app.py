@@ -360,6 +360,7 @@ def main():
         ]
 
         for output_prefix in output_prefixes:
+            output_segment_file = workdir / f"{output_prefix}.ts"
             command.extend(
                 (
                     "-seekable",
@@ -367,7 +368,7 @@ def main():
                     "-thread_queue_size",
                     "1024",
                     "-i",
-                    str(workdir / f"{output_prefix}.ts"),
+                    str(output_segment_file.absolute()),
                 )
             )
 
@@ -381,5 +382,8 @@ def main():
                 "bitexact",
             )
         )
-        command.extend((str(outdir / f"{manifest_id}.mp4"),))
+
+        output_mux_file = outdir / f"{manifest_id}.mp4"
+        command.extend((str(output_mux_file.absolute()),))
+
         subprocess.run(command)
