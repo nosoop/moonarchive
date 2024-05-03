@@ -21,6 +21,7 @@ import urllib.request
 import colorama
 import colorama.ansi
 import requests
+import requests.adapters
 
 colorama.just_fix_windows_console()
 
@@ -67,7 +68,12 @@ PlayerResponseExtractor = create_json_object_extractor("var ytInitialPlayerRespo
 def extract_player_response(url: str):
     response_extractor = PlayerResponseExtractor()
 
-    r = requests.get(url)
+    retries = requests.adapters.Retry(total=10, backoff_factor=0.1)
+
+    s = requests.Session()
+    s.mount("https://", requests.adapters.HTTPAdapter(max_retries=retries))
+
+    r = s.get(url)
     response_extractor.feed(r.text)
 
     if not response_extractor.result:
