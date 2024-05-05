@@ -67,14 +67,19 @@ class YTPlayerStreamingData(YTJSONStruct):
         # youtube may create multiple manifests for a stream, see
         # https://github.com/Kethsar/ytarchive/issues/56
         # this causes downloads to stall
-
+        #
         # this value is also present in the manifest itself; retrieve it the same way
-
+        #
         # parameters in the manifest are slash-delimited
         # extract the subpath within 'id'
         params = urllib.parse.urlparse(self.dash_manifest_url).path.split("/")
         _, id, *_ = itertools.dropwhile(lambda x: x != "id", params)
-        return id
+
+        # it's possible that this returns something in the form {video_id}.{id}~{unknown}
+        # e.g. xOdgbNQ_lsE.1~45623198
+        # we should be fine extracting the component preceding the tilde if it's present
+        id_base, *_ = id.partition("~")
+        return id_base
 
     def get_dash_manifest(self) -> YTDashManifest:
         with urllib.request.urlopen(self.dash_manifest_url) as resp:
