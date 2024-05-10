@@ -41,6 +41,7 @@ class YTPlayerAdaptiveFormats(YTJSONStruct):
     height: Optional[int] = None
     quality_label: Optional[str] = None
 
+    bitrate: Optional[int] = None
 
 class YTPlayerStreamingData(YTJSONStruct):
     expires_in_seconds: str
@@ -59,6 +60,7 @@ class YTPlayerStreamingData(YTJSONStruct):
     def sorted_audio_formats(self) -> list[YTPlayerAdaptiveFormats]:
         return sorted(
             (fmt for fmt in self.adaptive_formats if "audio" in fmt.mime_type),
+            key=operator.attrgetter("bitrate"),
             reverse=True,
         )
 
