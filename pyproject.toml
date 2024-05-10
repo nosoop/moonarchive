@@ -11,11 +11,16 @@ dependencies = [
 [project.scripts]
 moonarchive = "moonarchive.app:main"
 
+[project.optional-dependencies]
+dev = [
+    "ruff == 0.3.7",
+]
+
 [build-system]
 build-backend = 'setuptools.build_meta'
 requires = [
     'setuptools',
 ]
 
-[tool.black]
+[tool.ruff]
 line-length = 96
