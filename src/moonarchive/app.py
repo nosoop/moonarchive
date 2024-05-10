@@ -228,15 +228,11 @@ def stream_downloader(
         with output_stream_path.with_suffix(".fragdata.txt").open(
             "at", encoding="utf8"
         ) as fragdata:
-            fragdata.write(
-                json.dumps(
-                    {
-                        "cur_seq": frag.cur_seq,
-                        "length": frag.buffer.getbuffer().nbytes,
-                    }
-                )
-                + "\n"
-            )
+            payload = {
+                "cur_seq": frag.cur_seq,
+                "length": frag.buffer.getbuffer().nbytes,
+            }
+            fragdata.write(json.dumps(payload) + "\n")
 
         manifest_outputs[frag.manifest_id].add(output_prefix)
 
