@@ -96,12 +96,9 @@ def frag_iterator(resp: YTPlayerResponse, itag: int, status_queue: mp.Queue):
 
     video_url = f"https://youtu.be/{resp.video_details.video_id}"
     cur_seq = 0
-    max_seq = 0
 
     current_manifest_id = resp.streaming_data.dash_manifest_id
 
-    # this is supposed to increment on failure before we refetch the player response
-    num_empty_results = 0
     while True:
         url = manifest.format_urls[itag]
 
@@ -130,8 +127,6 @@ def frag_iterator(resp: YTPlayerResponse, itag: int, status_queue: mp.Queue):
                     buffer=buffer,
                 )
                 yield info
-
-                max_seq = new_max_seq
             cur_seq += 1
         except socket.timeout:
             continue
@@ -169,7 +164,6 @@ def frag_iterator(resp: YTPlayerResponse, itag: int, status_queue: mp.Queue):
                     # player response has a different manfifest ID than what we're aware of
                     # reset the sequence counters
                     cur_seq = 0
-                    max_seq = 0
                     current_manifest_id = resp.streaming_data.dash_manifest_id
         except ssl.SSLWantReadError:
             continue
@@ -320,11 +314,8 @@ def main():
 
         resp = extract_player_response(args.url)
 
-    manifest = resp.streaming_data.get_dash_manifest()
-
     preferred_format, *_ = resp.streaming_data.sorted_video_formats
     preferred_audio_format, *_ = resp.streaming_data.sorted_audio_formats
-    timeout = resp.streaming_data.adaptive_formats[0].target_duration_sec
 
     status_queue.put(messages.StreamVideoFormatMessage(preferred_format.quality_label))
 
