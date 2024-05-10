@@ -362,6 +362,12 @@ def main():
 
     # output a file for each manifest we received fragments for
     for manifest_id, output_prefixes in manifest_outputs.items():
+        if len(output_prefixes) != 2:
+            # for YouTube, we expect one audio / video stream pair per manifest
+            print(f"Manifest {manifest_id} produced outputs {output_prefixes} (expected 2)")
+            print("This will need to be manually processed")
+            continue
+
         # raising the log level to 'error' instead of 'warning' suppresses MOOV atom warnings
         # those warnings being dumped to stdout has a non-negligible performance impact
         command = [
