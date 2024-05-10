@@ -136,11 +136,16 @@ def frag_iterator(resp: YTPlayerResponse, itag: int, status_queue: mp.Queue):
         except socket.timeout:
             continue
         except urllib.error.HTTPError as err:
-            resp = extract_player_response(video_url)
+            # we need this call to be resilient to failures, otherwise we may have an incomplete download
+            try_resp = extract_player_response(video_url)
+            if not try_resp:
+                continue
+            resp = try_resp
+
             if err.code == 403:
                 # retrieve a fresh manifest
                 manifest = resp.streaming_data.get_dash_manifest()
-            elif err.code in (404, 503):
+            elif err.code in (404, 500, 503):
                 if not resp.microformat or not resp.microformat.live_broadcast_details:
                     # video is private?
                     return
