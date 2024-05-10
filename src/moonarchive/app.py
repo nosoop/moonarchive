@@ -338,7 +338,10 @@ def main():
 
     if args.write_description:
         desc_path = pathlib.Path(f"{video_id}.description")
-        desc_path.write_text(resp.video_details.short_description, encoding="utf8")
+        desc_path.write_text(
+            f"https://www.youtube.com/watch?v={video_id}\n\n{resp.video_details.short_description}",
+            encoding="utf8",
+        )
 
     workdir = pathlib.Path(".")
     outdir = workdir
