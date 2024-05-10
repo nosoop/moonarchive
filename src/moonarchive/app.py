@@ -323,7 +323,7 @@ def main():
                 if args.poll_interval > 0 and seconds_wait > args.poll_interval:
                     seconds_wait = args.poll_interval
         else:
-            status_queue.put(messages.StringMessage(f"No stream available, polling"))
+            status_queue.put(messages.StringMessage("No stream available, polling"))
 
         time.sleep(seconds_wait)
 
