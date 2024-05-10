@@ -89,15 +89,24 @@ class FragmentInfo(msgspec.Struct, kw_only=True):
 
 
 def frag_iterator(resp: YTPlayerResponse, itag: int, status_queue: mp.Queue):
+    if not resp.streaming_data or not resp.video_details:
+        raise ValueError("Received a non-streamable player response")
+
     # yields fragment information
     # this should refresh the manifest as needed and yield the next available fragment
     manifest = resp.streaming_data.get_dash_manifest()
+    if not manifest:
+        raise ValueError("Received a response with no DASH manfiest")
+
     timeout = resp.streaming_data.adaptive_formats[0].target_duration_sec
+    if not timeout:
+        raise ValueError("itag does not have a target duration set")
 
     video_url = f"https://youtu.be/{resp.video_details.video_id}"
     cur_seq = 0
 
     current_manifest_id = resp.streaming_data.dash_manifest_id
+    assert current_manifest_id
 
     while True:
         url = manifest.format_urls[itag]
@@ -141,7 +150,11 @@ def frag_iterator(resp: YTPlayerResponse, itag: int, status_queue: mp.Queue):
 
             if err.code == 403:
                 # retrieve a fresh manifest
+                if not resp.streaming_data:
+                    return
                 manifest = resp.streaming_data.get_dash_manifest()
+                if not manifest:
+                    return
             elif err.code in (404, 500, 503):
                 if not resp.microformat or not resp.microformat.live_broadcast_details:
                     # video is private?
@@ -149,9 +162,8 @@ def frag_iterator(resp: YTPlayerResponse, itag: int, status_queue: mp.Queue):
 
                 # the server has indicated that no fragment is present
                 # we're done if the stream is no longer live and a duration is rendered
-                if (
-                    not resp.microformat.live_broadcast_details.is_live_now
-                    and resp.video_details.num_length_seconds
+                if not resp.microformat.live_broadcast_details.is_live_now and (
+                    not resp.video_details or resp.video_details.num_length_seconds
                 ):
                     return
 
@@ -159,6 +171,9 @@ def frag_iterator(resp: YTPlayerResponse, itag: int, status_queue: mp.Queue):
                     # stream is offline
                     time.sleep(15)
                     continue
+
+                if not resp.streaming_data.dash_manifest_id:
+                    return
 
                 if current_manifest_id != resp.streaming_data.dash_manifest_id:
                     # player response has a different manfifest ID than what we're aware of

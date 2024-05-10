@@ -17,8 +17,12 @@ class YTDashManifest(msgspec.Struct):
         # convert manifest XML string to instance of class
         root = ElementTree.fromstring(text)
 
+        segment_list = root.find(".//{*}Period/{*}SegmentList")
+        if segment_list is None:
+            return None
+
         manifest = cls()
-        manifest.start_number = int(root.find(".//{*}Period/{*}SegmentList").get("startNumber"))
+        manifest.start_number = int(segment_list.get("startNumber") or 0)
 
         reps = root.findall(".//{*}Representation")
 
@@ -29,10 +33,11 @@ class YTDashManifest(msgspec.Struct):
             if base_url_elem is None:
                 continue
 
+            assert base_url_elem.text
             url_template = string.Template(base_url_elem.text + "sq/${sequence}")
 
             try:
-                int(itag)
+                int(itag)  # type: ignore[arg-type]
             except Exception:
                 continue
 

@@ -65,7 +65,7 @@ class YTPlayerStreamingData(YTJSONStruct):
         )
 
     @property
-    def dash_manifest_id(self) -> Optional[str]:
+    def dash_manifest_id(self) -> str | None:
         # youtube may create multiple manifests for a stream, see
         # https://github.com/Kethsar/ytarchive/issues/56
         # this causes downloads to stall
@@ -74,6 +74,9 @@ class YTPlayerStreamingData(YTJSONStruct):
         #
         # parameters in the manifest are slash-delimited
         # extract the subpath within 'id'
+        if not self.dash_manifest_url:
+            return None
+
         params = urllib.parse.urlparse(self.dash_manifest_url).path.split("/")
         _, id, *_ = itertools.dropwhile(lambda x: x != "id", params)
 
@@ -83,7 +86,9 @@ class YTPlayerStreamingData(YTJSONStruct):
         id_base, *_ = id.partition("~")
         return id_base
 
-    def get_dash_manifest(self) -> YTDashManifest:
+    def get_dash_manifest(self) -> YTDashManifest | None:
+        if not self.dash_manifest_url:
+            return None
         with urllib.request.urlopen(self.dash_manifest_url) as resp:
             return YTDashManifest.from_manifest_text(resp.read().decode("utf8"))
 
