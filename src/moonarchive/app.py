@@ -106,6 +106,8 @@ def frag_iterator(resp: YTPlayerResponse, itag: int, status_queue: mp.Queue):
     current_manifest_id = resp.streaming_data.dash_manifest_id
     assert current_manifest_id
 
+    status_queue.put(messages.StringMessage(f"{itag=} {timeout=}"))
+
     while True:
         url = manifest.format_urls[itag]
 
