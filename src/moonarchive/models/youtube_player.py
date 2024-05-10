@@ -43,6 +43,7 @@ class YTPlayerAdaptiveFormats(YTJSONStruct):
 
     bitrate: Optional[int] = None
 
+
 class YTPlayerStreamingData(YTJSONStruct):
     expires_in_seconds: str
     adaptive_formats: list[YTPlayerAdaptiveFormats]

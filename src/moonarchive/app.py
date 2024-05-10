@@ -1,5 +1,6 @@
 #!/usr/bin/python3
 
+
 import argparse
 import collections
 import concurrent.futures
@@ -17,22 +18,19 @@ import ssl
 import subprocess
 import time
 import urllib.request
+from multiprocessing.synchronize import Event as SyncEvent
 
 import colorama
 import colorama.ansi
+import msgspec
 import requests
 import requests.adapters
 
+from .models import messages as messages
+from .models.youtube_player import YTPlayerResponse
+from .output import BaseMessageHandler, YTArchiveMessageHandler
+
 colorama.just_fix_windows_console()
-
-from typing import Optional
-
-import msgspec
-
-import moonarchive.models.messages as messages
-import moonarchive.output
-from moonarchive.models.dash_manifest import YTDashManifest
-from moonarchive.models.youtube_player import YTPlayerResponse
 
 
 def create_json_object_extractor(decl: str):
@@ -189,9 +187,9 @@ def frag_iterator(resp: YTPlayerResponse, itag: int, status_queue: mp.Queue):
 
 
 def status_handler(
-    handler: moonarchive.output.BaseMessageHandler,
+    handler: BaseMessageHandler,
     status_queue: mp.Queue,
-    handler_stop: mp.Event,
+    handler_stop: SyncEvent,
 ):
     while not handler_stop.is_set() or not status_queue.empty():
         try:
@@ -273,7 +271,7 @@ def main():
     args = parser.parse_args()
 
     # set up output handler
-    handler = moonarchive.output.YTArchiveMessageHandler()
+    handler = YTArchiveMessageHandler()
     status_manager = mp.Manager()
 
     status_queue = status_manager.Queue()

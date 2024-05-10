@@ -3,7 +3,7 @@
 import colorama.ansi
 import msgspec
 
-import moonarchive.models.messages as msgtypes
+from .models import messages as msgtypes
 
 
 class BaseMessageHandler(msgspec.Struct):
