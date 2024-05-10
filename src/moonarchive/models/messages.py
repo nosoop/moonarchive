@@ -33,5 +33,10 @@ class StreamVideoFormatMessage(BaseMessage, tag="stream-video-format"):
     # TODO: write codec (vp9 / h264)
 
 
+class ExtractingPlayerResponseMessage(BaseMessage, tag="extracting-player-response"):
+    itag: int
+    http_error_code: int
+
+
 class DownloadJobEndedMessage(BaseMessage, tag="download-job-ended"):
     itag: int

@@ -136,6 +136,8 @@ def frag_iterator(resp: YTPlayerResponse, itag: int, status_queue: mp.Queue):
         except socket.timeout:
             continue
         except urllib.error.HTTPError as err:
+            status_queue.put(messages.ExtractingPlayerResponseMessage(itag, err.code))
+
             # we need this call to be resilient to failures, otherwise we may have an incomplete download
             try_resp = extract_player_response(video_url)
             if not try_resp:

@@ -64,6 +64,10 @@ class YTArchiveMessageHandler(BaseMessageHandler, tag="ytarchive"):
                 print(f"Stream starts at {msg.start_datetime}")
             case msgtypes.StreamVideoFormatMessage:
                 print(f"Selected quality: {msg.quality_label}")
+            case msgtypes.ExtractingPlayerResponseMessage:
+                print(
+                    f"Extracting player response for itag {msg.itag}; segment error {msg.http_error_code}"
+                )
             case _:
                 pass
 
