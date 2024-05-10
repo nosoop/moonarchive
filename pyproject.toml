@@ -13,6 +13,7 @@ moonarchive = "moonarchive.app:main"
 
 [project.optional-dependencies]
 dev = [
+    "mypy == 1.9.0",
     "ruff == 0.3.7",
 ]
 

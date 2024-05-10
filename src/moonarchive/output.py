@@ -43,10 +43,10 @@ class YTArchiveMessageHandler(BaseMessageHandler, tag="ytarchive"):
         )
 
     def handle_message(self, msg: msgtypes.BaseMessage):
-        match type(msg):
-            case msgtypes.StringMessage:
+        match msg:
+            case msg if isinstance(msg, msgtypes.StringMessage):
                 print(msg.text)
-            case msgtypes.FragmentMessage:
+            case msg if isinstance(msg, msgtypes.FragmentMessage):
                 self.max_seq = max(self.max_seq, msg.max_fragments)
                 if msg.itag == 140:
                     self.audio_seq = msg.current_fragment
@@ -55,16 +55,16 @@ class YTArchiveMessageHandler(BaseMessageHandler, tag="ytarchive"):
                 self.total_downloaded += msg.fragment_size
                 self.current_manifest = msg.manifest_id
                 self.print_frag_status_update()
-            case msgtypes.DownloadJobEndedMessage:
+            case msg if isinstance(msg, msgtypes.DownloadJobEndedMessage):
                 print()
                 print(f"Download job finished for format {msg.itag}")
-            case msgtypes.StreamInfoMessage:
+            case msg if isinstance(msg, msgtypes.StreamInfoMessage):
                 print(f"Channel: {msg.channel_name}")
                 print(f"Video Title: {msg.video_title}")
                 print(f"Stream starts at {msg.start_datetime}")
-            case msgtypes.StreamVideoFormatMessage:
+            case msg if isinstance(msg, msgtypes.StreamVideoFormatMessage):
                 print(f"Selected quality: {msg.quality_label}")
-            case msgtypes.ExtractingPlayerResponseMessage:
+            case msg if isinstance(msg, msgtypes.ExtractingPlayerResponseMessage):
                 print(
                     f"Extracting player response for itag {msg.itag}; segment error {msg.http_error_code}"
                 )
