@@ -6,25 +6,20 @@ import collections
 import concurrent.futures
 import datetime
 import html.parser
-import http.client
 import io
 import json
 import multiprocessing as mp
 import pathlib
 import queue
 import shutil
-import socket
-import ssl
 import subprocess
 import time
-import urllib.request
 from multiprocessing.synchronize import Event as SyncEvent
 
 import colorama
 import colorama.ansi
+import httpx
 import msgspec
-import requests
-import requests.adapters
 
 from .models import messages as messages
 from .models.youtube_player import YTPlayerResponse
@@ -66,17 +61,14 @@ PlayerResponseExtractor = create_json_object_extractor("var ytInitialPlayerRespo
 def extract_player_response(url: str):
     response_extractor = PlayerResponseExtractor()
 
-    retries = requests.adapters.Retry(total=10, backoff_factor=0.1)
+    transport = httpx.HTTPTransport(retries=10)
+    with httpx.Client(transport=transport, follow_redirects=True) as client:
+        r = client.get(url)
+        response_extractor.feed(r.text)
 
-    s = requests.Session()
-    s.mount("https://", requests.adapters.HTTPAdapter(max_retries=retries))
-
-    r = s.get(url)
-    response_extractor.feed(r.text)
-
-    if not response_extractor.result:
-        return None
-    return msgspec.json.decode(response_extractor.result, type=YTPlayerResponse)
+        if not response_extractor.result:
+            return None
+        return msgspec.json.decode(response_extractor.result, type=YTPlayerResponse)
 
 
 class FragmentInfo(msgspec.Struct, kw_only=True):
@@ -108,6 +100,8 @@ def frag_iterator(resp: YTPlayerResponse, itag: int, status_queue: mp.Queue):
 
     status_queue.put(messages.StringMessage(f"{itag=} {timeout=}"))
 
+    client = httpx.Client(follow_redirects=True)
+
     while True:
         url = manifest.format_urls[itag]
 
@@ -121,26 +115,27 @@ def frag_iterator(resp: YTPlayerResponse, itag: int, status_queue: mp.Queue):
         #       - sequence resets
 
         try:
-            with urllib.request.urlopen(
-                url.substitute(sequence=cur_seq), timeout=timeout * 2
-            ) as fresp:
-                new_max_seq = int(fresp.getheader("X-Head-Seqnum", -1))
+            fresp = client.get(url.substitute(sequence=cur_seq), timeout=timeout * 2)
+            fresp.raise_for_status()
 
-                # copying to a buffer here ensures this function handles errors related to the request
-                buffer = io.BytesIO(fresp.read())
+            new_max_seq = int(fresp.headers.get("X-Head-Seqnum", -1))
 
-                info = FragmentInfo(
-                    cur_seq=cur_seq,
-                    max_seq=new_max_seq,
-                    manifest_id=current_manifest_id,
-                    buffer=buffer,
-                )
-                yield info
+            # copying to a buffer here ensures this function handles errors related to the request,
+            # as opposed to passing the request errors to the downloading task
+            buffer = io.BytesIO(fresp.content)
+
+            info = FragmentInfo(
+                cur_seq=cur_seq,
+                max_seq=new_max_seq,
+                manifest_id=current_manifest_id,
+                buffer=buffer,
+            )
+            yield info
             cur_seq += 1
-        except socket.timeout:
-            continue
-        except urllib.error.HTTPError as err:
-            status_queue.put(messages.ExtractingPlayerResponseMessage(itag, err.code))
+        except httpx.HTTPStatusError as exc:
+            status_queue.put(
+                messages.ExtractingPlayerResponseMessage(itag, exc.response.status_code)
+            )
 
             # we need this call to be resilient to failures, otherwise we may have an incomplete download
             try_resp = extract_player_response(video_url)
@@ -148,14 +143,14 @@ def frag_iterator(resp: YTPlayerResponse, itag: int, status_queue: mp.Queue):
                 continue
             resp = try_resp
 
-            if err.code == 403:
+            if exc.response.status_code == 403:
                 # retrieve a fresh manifest
                 if not resp.streaming_data:
                     return
                 manifest = resp.streaming_data.get_dash_manifest()
                 if not manifest:
                     return
-            elif err.code in (404, 500, 503):
+            elif exc.response.status_code in (404, 500, 503):
                 if not resp.microformat or not resp.microformat.live_broadcast_details:
                     # video is private?
                     return
@@ -168,11 +163,15 @@ def frag_iterator(resp: YTPlayerResponse, itag: int, status_queue: mp.Queue):
                     return
 
                 if not resp.streaming_data:
-                    # stream is offline
+                    # stream is offline; sleep and retry previous fragment
                     time.sleep(15)
                     continue
 
                 if not resp.streaming_data.dash_manifest_id:
+                    return
+
+                manifest = resp.streaming_data.get_dash_manifest()
+                if not manifest:
                     return
 
                 if current_manifest_id != resp.streaming_data.dash_manifest_id:
@@ -180,11 +179,8 @@ def frag_iterator(resp: YTPlayerResponse, itag: int, status_queue: mp.Queue):
                     # reset the sequence counters
                     cur_seq = 0
                     current_manifest_id = resp.streaming_data.dash_manifest_id
-        except ssl.SSLWantReadError:
-            continue
-        except urllib.error.URLError:
-            continue
-        except http.client.IncompleteRead:
+        except (httpx.HTTPError, httpx.StreamError):
+            # for everything else we just retry
             continue
 
 
