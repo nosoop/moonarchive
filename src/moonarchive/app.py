@@ -102,17 +102,12 @@ def frag_iterator(resp: YTPlayerResponse, itag: int, status_queue: mp.Queue):
 
     client = httpx.Client(follow_redirects=True)
 
+    # HACK: determine which stream to get itag selection for based on content type
+    # FIXME: filter function should be passed into the frag_iterator prior to this
+    last_content_type = None
+
     while True:
         url = manifest.format_urls[itag]
-
-        # formats may change throughout the stream, and this should coincide with a sequence reset
-        # in that case we would need to restart the download on a second file
-
-        # TODO: gracefully handle the following
-        #       - end of stream
-        #       - extended stream dropouts (we should refresh manifest / player)
-        #       - unavailable formats
-        #       - sequence resets
 
         try:
             fresp = client.get(url.substitute(sequence=cur_seq), timeout=timeout * 2)
@@ -132,6 +127,7 @@ def frag_iterator(resp: YTPlayerResponse, itag: int, status_queue: mp.Queue):
             )
             yield info
             cur_seq += 1
+            last_content_type = fresp.headers.get("content-type")
         except httpx.HTTPStatusError as exc:
             status_queue.put(
                 messages.ExtractingPlayerResponseMessage(itag, exc.response.status_code)
@@ -179,6 +175,19 @@ def frag_iterator(resp: YTPlayerResponse, itag: int, status_queue: mp.Queue):
                     # reset the sequence counters
                     cur_seq = 0
                     current_manifest_id = resp.streaming_data.dash_manifest_id
+
+                    # update format to the best available
+                    # manifest.format_urls raises a key error
+                    if not last_content_type:
+                        raise Exception("Not sure what format this download job should have")
+                    elif "video" in last_content_type:
+                        preferred_format, *_ = resp.streaming_data.sorted_video_formats
+                        itag = preferred_format.itag
+                    elif "audio" in last_content_type:
+                        preferred_audio_format, *_ = resp.streaming_data.sorted_audio_formats
+                        itag = preferred_audio_format.itag
+
+                    status_queue.put(messages.StringMessage(f"{itag=} {timeout=}"))
         except (httpx.HTTPError, httpx.StreamError):
             # for everything else we just retry
             continue
@@ -207,12 +216,7 @@ def stream_downloader(
     # this is used later to determine which files to mux together
     manifest_outputs = collections.defaultdict(set)
 
-    # thread for managing the download of a specific format
-    # we need this to be more robust against available format changes mid-stream
     for frag in frag_iterator(resp, format_itag, status_queue):
-        # formats may change throughout the stream, and this should coincide with a sequence reset
-        # in that case we would need to restart the download on a second file
-
         output_prefix = f"{frag.manifest_id}.f{format_itag}"
         output_stream_path = output_directory / f"{output_prefix}.ts"
 
