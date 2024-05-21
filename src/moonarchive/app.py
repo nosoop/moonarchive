@@ -80,7 +80,7 @@ class FragmentInfo(msgspec.Struct, kw_only=True):
     buffer: io.BytesIO
 
 
-def frag_iterator(resp: YTPlayerResponse, itag: int, status_queue: mp.Queue):
+def frag_iterator(resp: YTPlayerResponse, itag: int, status_queue: queue.Queue):
     if not resp.streaming_data or not resp.video_details:
         raise ValueError("Received a non-streamable player response")
 
@@ -197,7 +197,7 @@ def frag_iterator(resp: YTPlayerResponse, itag: int, status_queue: mp.Queue):
 
 def status_handler(
     handler: BaseMessageHandler,
-    status_queue: mp.Queue,
+    status_queue: queue.Queue,
     handler_stop: SyncEvent,
 ):
     while not handler_stop.is_set() or not status_queue.empty():
@@ -212,7 +212,7 @@ def stream_downloader(
     resp: YTPlayerResponse,
     format_itag: int,
     output_directory: pathlib.Path,
-    status_queue: mp.Queue,
+    status_queue: queue.Queue,
 ) -> dict[str, set[str]]:
     # record the manifests and formats we're downloading
     # this is used later to determine which files to mux together
