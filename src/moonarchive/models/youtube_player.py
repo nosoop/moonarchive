@@ -139,6 +139,10 @@ class YTPlayerMicroformatRenderer(YTJSONStruct):
     upload_date: str
     live_broadcast_details: Optional[YTPlayerMicroformatRendererBroadcastDetails] = None
 
+    @property
+    def thumbnails(self) -> list[YTPlayerThumbnail]:
+        return self.thumbnail.thumbnails
+
 
 class YTPlayerMicroformat(YTJSONStruct):
     player_microformat_renderer: YTPlayerMicroformatRenderer

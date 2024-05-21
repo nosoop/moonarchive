@@ -14,6 +14,8 @@ import queue
 import shutil
 import subprocess
 import time
+import urllib.parse
+import urllib.request
 from multiprocessing.synchronize import Event as SyncEvent
 
 import colorama
@@ -265,6 +267,7 @@ def main():
         default=0,
     )
     parser.add_argument("--write-description", action="store_true")
+    parser.add_argument("--write-thumbnail", action="store_true")
 
     args = parser.parse_args()
 
@@ -341,6 +344,17 @@ def main():
 
     workdir = pathlib.Path(".")
     outdir = workdir
+
+    if args.write_thumbnail:
+        if resp.microformat and resp.microformat.thumbnails:
+            thumbnail_url = resp.microformat.thumbnails[0].url
+            thumbnail_url_path = pathlib.Path(
+                urllib.request.url2pathname(urllib.parse.urlparse(thumbnail_url).path)
+            )
+
+            thumb_dest_path = (workdir / video_id).with_suffix(thumbnail_url_path.suffix)
+            r = httpx.get(thumbnail_url)
+            thumb_dest_path.write_bytes(r.content)
 
     manifest_outputs = collections.defaultdict(set)
     with concurrent.futures.ProcessPoolExecutor() as executor:
