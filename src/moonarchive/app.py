@@ -35,13 +35,13 @@ def create_json_object_extractor(decl: str):
         in_script: bool = False
         result = None
 
-        def handle_starttag(self, tag, attrs):
+        def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]):
             self.in_script = tag == "script"
 
-        def handle_endtag(self, tag):
+        def handle_endtag(self, tag: str):
             self.in_script = False
 
-        def handle_data(self, data):
+        def handle_data(self, data: str):
             if not self.in_script:
                 return
 
@@ -255,7 +255,7 @@ def stream_downloader(
     return manifest_outputs
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser()
 
     parser.add_argument("url", type=str)
@@ -356,7 +356,7 @@ def main():
             r = httpx.get(thumbnail_url)
             thumb_dest_path.write_bytes(r.content)
 
-    manifest_outputs = collections.defaultdict(set)
+    manifest_outputs: dict[str, set[str]] = collections.defaultdict(set)
     with concurrent.futures.ProcessPoolExecutor() as executor:
         # tasks to write streams to file
         video_stream_dl = executor.submit(

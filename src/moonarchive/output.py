@@ -18,7 +18,7 @@ class JSONLMessageHandler(BaseMessageHandler, tag="jsonl"):
         print(msgspec.json.encode(msg).decode("utf8"))
 
 
-def _sizeof_fmt(num, suffix="B"):
+def _sizeof_fmt(num: int | float, suffix: str = "B"):
     # https://stackoverflow.com/a/1094933
     for unit in ("", "Ki", "Mi", "Gi", "Ti", "Pi", "Ei", "Zi"):
         if abs(num) < 1024.0:

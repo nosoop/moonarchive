@@ -25,3 +25,4 @@ requires = [
 
 [tool.ruff]
 line-length = 96
+lint.extend-select = ["ANN001"]

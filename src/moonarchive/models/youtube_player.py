@@ -147,7 +147,7 @@ class YTPlayerMicroformatRenderer(YTJSONStruct):
 class YTPlayerMicroformat(YTJSONStruct):
     player_microformat_renderer: YTPlayerMicroformatRenderer
 
-    def __getattr__(self, name):
+    def __getattr__(self, name: str):
         # proxy attribute accesses to the renderer
         return getattr(self.player_microformat_renderer, name)
 
