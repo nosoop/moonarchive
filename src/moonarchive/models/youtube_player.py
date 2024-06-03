@@ -1,8 +1,8 @@
 #!/usr/bin/python3
 
 import datetime
+import enum
 import itertools
-import operator
 import urllib.parse
 import urllib.request
 from typing import NamedTuple, Optional
@@ -11,8 +11,21 @@ from .dash_manifest import YTDashManifest
 from .youtube import YTJSONStruct
 
 
+class YTPlayerMediaType(enum.StrEnum):
+    VIDEO = "video"
+    AUDIO = "audio"
+
+    @staticmethod
+    def from_str(fmtstr: str) -> "YTPlayerMediaType":
+        if fmtstr in ("video",):
+            return YTPlayerMediaType.VIDEO
+        elif fmtstr in ("audio",):
+            return YTPlayerMediaType.AUDIO
+        raise NotImplementedError(f"Unknown media type {fmtstr}")
+
+
 class YTPlayerAdaptiveFormatType(NamedTuple):
-    type: str
+    type: YTPlayerMediaType
     subtype: str
     codec: str | None = None
 
@@ -62,30 +75,16 @@ class YTPlayerAdaptiveFormats(YTJSONStruct):
         param_key, param_value = parameter.strip().split("=")
 
         if param_key == "codecs":
-            return (type, subtype, param_value.strip('"'))
-        return (type, subtype, None)
+            return YTPlayerAdaptiveFormatType(
+                YTPlayerMediaType.from_str(type), subtype, param_value.strip('"')
+            )
+        return YTPlayerAdaptiveFormatType(YTPlayerMediaType.from_str(type), subtype, None)
 
 
 class YTPlayerStreamingData(YTJSONStruct):
     expires_in_seconds: str
     adaptive_formats: list[YTPlayerAdaptiveFormats]
     dash_manifest_url: Optional[str] = None
-
-    @property
-    def sorted_video_formats(self) -> list[YTPlayerAdaptiveFormats]:
-        return sorted(
-            (fmt for fmt in self.adaptive_formats if fmt.height),
-            key=operator.attrgetter("width"),
-            reverse=True,
-        )
-
-    @property
-    def sorted_audio_formats(self) -> list[YTPlayerAdaptiveFormats]:
-        return sorted(
-            (fmt for fmt in self.adaptive_formats if "audio" in fmt.mime_type),
-            key=operator.attrgetter("bitrate"),
-            reverse=True,
-        )
 
     @property
     def dash_manifest_id(self) -> str | None:

@@ -4,11 +4,13 @@
 import argparse
 import collections
 import concurrent.futures
+import dataclasses
 import datetime
 import html.parser
 import io
 import json
 import multiprocessing as mp
+import operator
 import pathlib
 import queue
 import shutil
@@ -24,7 +26,7 @@ import httpx
 import msgspec
 
 from .models import messages as messages
-from .models.youtube_player import YTPlayerResponse
+from .models.youtube_player import YTPlayerAdaptiveFormats, YTPlayerMediaType, YTPlayerResponse
 from .output import BaseMessageHandler, YTArchiveMessageHandler
 
 colorama.just_fix_windows_console()
@@ -73,14 +75,38 @@ def extract_player_response(url: str):
         return msgspec.json.decode(response_extractor.result, type=YTPlayerResponse)
 
 
+@dataclasses.dataclass
+class FormatSelector:
+    """
+    Class to select a YouTube substream for downloading.
+    """
+
+    major_type: YTPlayerMediaType
+    codec: str | None = None
+
+    def select(self, formats: list[YTPlayerAdaptiveFormats]) -> list[YTPlayerAdaptiveFormats]:
+        out_formats = filter(lambda x: x.media_type.type == self.major_type, formats)
+        if self.codec is not None and any(self.codec == x.media_type.codec for x in formats):
+            out_formats = filter(lambda x: self.codec == x.media_type.codec, out_formats)
+
+        # TODO: allow for prioritizing VP9 over AVC1 at the same resolution
+        sort_key = None
+        if self.major_type == YTPlayerMediaType.VIDEO:
+            sort_key = operator.attrgetter("width")
+        else:
+            sort_key = operator.attrgetter("bitrate")
+        return sorted(out_formats, key=sort_key, reverse=True)
+
+
 class FragmentInfo(msgspec.Struct, kw_only=True):
     cur_seq: int
     max_seq: int
+    itag: int
     manifest_id: str
     buffer: io.BytesIO
 
 
-def frag_iterator(resp: YTPlayerResponse, itag: int, status_queue: queue.Queue):
+def frag_iterator(resp: YTPlayerResponse, selector: FormatSelector, status_queue: queue.Queue):
     if not resp.streaming_data or not resp.video_details:
         raise ValueError("Received a non-streamable player response")
 
@@ -90,7 +116,10 @@ def frag_iterator(resp: YTPlayerResponse, itag: int, status_queue: queue.Queue):
     if not manifest:
         raise ValueError("Received a response with no DASH manfiest")
 
-    timeout = resp.streaming_data.adaptive_formats[0].target_duration_sec
+    selected_format, *_ = selector.select(resp.streaming_data.adaptive_formats)
+    itag = selected_format.itag
+
+    timeout = selected_format.target_duration_sec
     if not timeout:
         raise ValueError("itag does not have a target duration set")
 
@@ -100,13 +129,11 @@ def frag_iterator(resp: YTPlayerResponse, itag: int, status_queue: queue.Queue):
     current_manifest_id = resp.streaming_data.dash_manifest_id
     assert current_manifest_id
 
+    if selector.major_type == YTPlayerMediaType.VIDEO and selected_format.quality_label:
+        status_queue.put(messages.StreamVideoFormatMessage(selected_format.quality_label))
     status_queue.put(messages.StringMessage(f"{itag=} {timeout=}"))
 
     client = httpx.Client(follow_redirects=True)
-
-    # HACK: determine which stream to get itag selection for based on content type
-    # FIXME: filter function should be passed into the frag_iterator prior to this
-    last_content_type = None
 
     while True:
         url = manifest.format_urls[itag]
@@ -124,12 +151,12 @@ def frag_iterator(resp: YTPlayerResponse, itag: int, status_queue: queue.Queue):
             info = FragmentInfo(
                 cur_seq=cur_seq,
                 max_seq=new_max_seq,
+                itag=itag,
                 manifest_id=current_manifest_id,
                 buffer=buffer,
             )
             yield info
             cur_seq += 1
-            last_content_type = fresp.headers.get("content-type")
         except httpx.HTTPStatusError as exc:
             status_queue.put(
                 messages.ExtractingPlayerResponseMessage(itag, exc.response.status_code)
@@ -180,14 +207,8 @@ def frag_iterator(resp: YTPlayerResponse, itag: int, status_queue: queue.Queue):
 
                     # update format to the best available
                     # manifest.format_urls raises a key error
-                    if not last_content_type:
-                        raise Exception("Not sure what format this download job should have")
-                    elif "video" in last_content_type:
-                        preferred_format, *_ = resp.streaming_data.sorted_video_formats
-                        itag = preferred_format.itag
-                    elif "audio" in last_content_type:
-                        preferred_audio_format, *_ = resp.streaming_data.sorted_audio_formats
-                        itag = preferred_audio_format.itag
+                    preferred_format, *_ = selector.select(resp.streaming_data.adaptive_formats)
+                    itag = preferred_format.itag
 
                     status_queue.put(messages.StringMessage(f"{itag=} {timeout=}"))
         except (httpx.HTTPError, httpx.StreamError):
@@ -210,7 +231,7 @@ def status_handler(
 
 def stream_downloader(
     resp: YTPlayerResponse,
-    format_itag: int,
+    selector: FormatSelector,
     output_directory: pathlib.Path,
     status_queue: queue.Queue,
 ) -> dict[str, set[str]]:
@@ -218,8 +239,9 @@ def stream_downloader(
     # this is used later to determine which files to mux together
     manifest_outputs = collections.defaultdict(set)
 
-    for frag in frag_iterator(resp, format_itag, status_queue):
-        output_prefix = f"{frag.manifest_id}.f{format_itag}"
+    last_itag = 0
+    for frag in frag_iterator(resp, selector, status_queue):
+        output_prefix = f"{frag.manifest_id}.f{frag.itag}"
         output_stream_path = output_directory / f"{output_prefix}.ts"
 
         # we dump our fragment lengths in case we need to extract the raw segments
@@ -246,12 +268,13 @@ def stream_downloader(
             messages.FragmentMessage(
                 frag.cur_seq,
                 frag.max_seq,
-                format_itag,
+                frag.itag,
                 frag.manifest_id,
                 frag.buffer.getbuffer().nbytes,
             )
         )
-    status_queue.put(messages.DownloadJobEndedMessage(format_itag))
+        last_itag = frag.itag
+    status_queue.put(messages.DownloadJobEndedMessage(last_itag))
     return manifest_outputs
 
 
@@ -328,11 +351,6 @@ def main() -> None:
 
         resp = extract_player_response(args.url)
 
-    preferred_format, *_ = resp.streaming_data.sorted_video_formats
-    preferred_audio_format, *_ = resp.streaming_data.sorted_audio_formats
-
-    status_queue.put(messages.StreamVideoFormatMessage(preferred_format.quality_label))
-
     video_id = resp.video_details.video_id
 
     if args.write_description:
@@ -360,10 +378,18 @@ def main() -> None:
     with concurrent.futures.ProcessPoolExecutor() as executor:
         # tasks to write streams to file
         video_stream_dl = executor.submit(
-            stream_downloader, resp, preferred_format.itag, workdir, status_queue
+            stream_downloader,
+            resp,
+            FormatSelector(YTPlayerMediaType.VIDEO),
+            workdir,
+            status_queue,
         )
         audio_stream_dl = executor.submit(
-            stream_downloader, resp, preferred_audio_format.itag, workdir, status_queue
+            stream_downloader,
+            resp,
+            FormatSelector(YTPlayerMediaType.AUDIO),
+            workdir,
+            status_queue,
         )
         for future in concurrent.futures.as_completed((video_stream_dl, audio_stream_dl)):
             exc = future.exception()
