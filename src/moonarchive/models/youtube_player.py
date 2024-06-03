@@ -5,10 +5,16 @@ import itertools
 import operator
 import urllib.parse
 import urllib.request
-from typing import Optional
+from typing import NamedTuple, Optional
 
 from .dash_manifest import YTDashManifest
 from .youtube import YTJSONStruct
+
+
+class YTPlayerAdaptiveFormatType(NamedTuple):
+    type: str
+    subtype: str
+    codec: str | None = None
 
 
 class YTPlayerMainAppWebResponseContext(YTJSONStruct):
@@ -30,6 +36,11 @@ class YTPlayerPlayabilityStatus(YTJSONStruct):
 
 class YTPlayerAdaptiveFormats(YTJSONStruct):
     itag: int
+
+    # sample types:
+    # video/mp4; codecs="avc1.4d402a" (itag 299)
+    # video/webm; codecs="vp9" (itag 303)
+    # audio/mp4; codecs="mp4a.40.2" (itag 140)
     mime_type: str
 
     # this is not present in non-live streams
@@ -42,6 +53,17 @@ class YTPlayerAdaptiveFormats(YTJSONStruct):
     quality_label: Optional[str] = None
 
     bitrate: Optional[int] = None
+
+    @property
+    def media_type(self) -> YTPlayerAdaptiveFormatType:
+        fulltype, _, parameter = self.mime_type.partition(";")
+
+        type, subtype = fulltype.split("/")
+        param_key, param_value = parameter.strip().split("=")
+
+        if param_key == "codecs":
+            return (type, subtype, param_value.strip('"'))
+        return (type, subtype, None)
 
 
 class YTPlayerStreamingData(YTJSONStruct):
