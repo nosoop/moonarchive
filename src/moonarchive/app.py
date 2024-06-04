@@ -19,6 +19,7 @@ import time
 import urllib.parse
 import urllib.request
 from multiprocessing.synchronize import Event as SyncEvent
+from typing import Iterator, Type
 
 import colorama
 import colorama.ansi
@@ -32,18 +33,18 @@ from .output import BaseMessageHandler, YTArchiveMessageHandler
 colorama.just_fix_windows_console()
 
 
-def create_json_object_extractor(decl: str):
+def create_json_object_extractor(decl: str) -> Type[html.parser.HTMLParser]:
     class InternalHTMLParser(html.parser.HTMLParser):
         in_script: bool = False
         result = None
 
-        def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]):
+        def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
             self.in_script = tag == "script"
 
-        def handle_endtag(self, tag: str):
+        def handle_endtag(self, tag: str) -> None:
             self.in_script = False
 
-        def handle_data(self, data: str):
+        def handle_data(self, data: str) -> None:
             if not self.in_script:
                 return
 
@@ -62,7 +63,7 @@ def create_json_object_extractor(decl: str):
 PlayerResponseExtractor = create_json_object_extractor("var ytInitialPlayerResponse =")
 
 
-def extract_player_response(url: str):
+def extract_player_response(url: str) -> YTPlayerResponse:
     response_extractor = PlayerResponseExtractor()
 
     transport = httpx.HTTPTransport(retries=10)
@@ -70,9 +71,9 @@ def extract_player_response(url: str):
         r = client.get(url)
         response_extractor.feed(r.text)
 
-        if not response_extractor.result:
-            return None
-        return msgspec.json.decode(response_extractor.result, type=YTPlayerResponse)
+        if not response_extractor.result:  # type: ignore
+            raise ValueError("Could not extract player response")
+        return msgspec.json.decode(response_extractor.result, type=YTPlayerResponse)  # type: ignore
 
 
 @dataclasses.dataclass
@@ -106,7 +107,9 @@ class FragmentInfo(msgspec.Struct, kw_only=True):
     buffer: io.BytesIO
 
 
-def frag_iterator(resp: YTPlayerResponse, selector: FormatSelector, status_queue: queue.Queue):
+def frag_iterator(
+    resp: YTPlayerResponse, selector: FormatSelector, status_queue: queue.Queue
+) -> Iterator[FragmentInfo]:
     if not resp.streaming_data or not resp.video_details:
         raise ValueError("Received a non-streamable player response")
 
@@ -220,7 +223,7 @@ def status_handler(
     handler: BaseMessageHandler,
     status_queue: queue.Queue,
     handler_stop: SyncEvent,
-):
+) -> None:
     while not handler_stop.is_set() or not status_queue.empty():
         try:
             message = status_queue.get(timeout=1.0)
@@ -312,6 +315,8 @@ def main() -> None:
         status_proc.join()
         return
 
+    assert resp.video_details
+    assert resp.microformat
     status_queue.put(
         messages.StreamInfoMessage(
             resp.video_details.author,
@@ -351,6 +356,7 @@ def main() -> None:
 
         resp = extract_player_response(args.url)
 
+    assert resp.video_details
     video_id = resp.video_details.video_id
 
     if args.write_description:

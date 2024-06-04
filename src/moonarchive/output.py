@@ -7,18 +7,18 @@ from .models import messages as msgtypes
 
 
 class BaseMessageHandler(msgspec.Struct):
-    def handle_message(self, msg: msgtypes.BaseMessage):
+    def handle_message(self, msg: msgtypes.BaseMessage) -> None:
         raise NotImplementedError()
 
 
 class JSONLMessageHandler(BaseMessageHandler, tag="jsonl"):
     # outputs messages as newline-delimited JSON
     # this is intended for applications that read this tool's standard output
-    def handle_message(self, msg: msgtypes.BaseMessage):
+    def handle_message(self, msg: msgtypes.BaseMessage) -> None:
         print(msgspec.json.encode(msg).decode("utf8"))
 
 
-def _sizeof_fmt(num: int | float, suffix: str = "B"):
+def _sizeof_fmt(num: int | float, suffix: str = "B") -> str:
     # https://stackoverflow.com/a/1094933
     for unit in ("", "Ki", "Mi", "Gi", "Ti", "Pi", "Ei", "Zi"):
         if abs(num) < 1024.0:
@@ -35,14 +35,14 @@ class YTArchiveMessageHandler(BaseMessageHandler, tag="ytarchive"):
     total_downloaded: int = 0
     current_manifest: str = ""
 
-    def print_frag_status_update(self):
+    def print_frag_status_update(self) -> None:
         print(
             f"\r{colorama.ansi.clear_line()}Video Fragments: {self.video_seq + 1}; Audio Fragments: {self.audio_seq + 1}; Max Fragments: {self.max_seq + 1}; Total Downloaded: {self.human_total_size}; Manifest: {self.current_manifest}",
             end="",
             flush=True,
         )
 
-    def handle_message(self, msg: msgtypes.BaseMessage):
+    def handle_message(self, msg: msgtypes.BaseMessage) -> None:
         match msg:
             case msg if isinstance(msg, msgtypes.StringMessage):
                 print(msg.text)
@@ -72,5 +72,5 @@ class YTArchiveMessageHandler(BaseMessageHandler, tag="ytarchive"):
                 pass
 
     @property
-    def human_total_size(self):
+    def human_total_size(self) -> str:
         return _sizeof_fmt(self.total_downloaded)

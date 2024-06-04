@@ -127,7 +127,7 @@ class YTPlayerVideoDetails(YTJSONStruct):
     is_live: bool = False
 
     @property
-    def num_length_seconds(self):
+    def num_length_seconds(self) -> int:
         return int(self.length_seconds)
 
 
