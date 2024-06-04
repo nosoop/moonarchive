@@ -237,7 +237,7 @@ def stream_downloader(
     selector: FormatSelector,
     output_directory: pathlib.Path,
     status_queue: queue.Queue,
-) -> dict[str, set[str]]:
+) -> dict[str, set[pathlib.Path]]:
     # record the manifests and formats we're downloading
     # this is used later to determine which files to mux together
     manifest_outputs = collections.defaultdict(set)
@@ -261,7 +261,7 @@ def stream_downloader(
             }
             fragdata.write(json.dumps(payload) + "\n")
 
-        manifest_outputs[frag.manifest_id].add(output_prefix)
+        manifest_outputs[frag.manifest_id].add(output_stream_path)
 
         frag.buffer.seek(0)
         with output_stream_path.open("ab") as o:
@@ -380,7 +380,7 @@ def main() -> None:
             r = httpx.get(thumbnail_url)
             thumb_dest_path.write_bytes(r.content)
 
-    manifest_outputs: dict[str, set[str]] = collections.defaultdict(set)
+    manifest_outputs: dict[str, set[pathlib.Path]] = collections.defaultdict(set)
     with concurrent.futures.ProcessPoolExecutor() as executor:
         # tasks to write streams to file
         video_stream_dl = executor.submit(
@@ -412,10 +412,11 @@ def main() -> None:
     print(manifest_outputs)
 
     # output a file for each manifest we received fragments for
-    for manifest_id, output_prefixes in manifest_outputs.items():
-        if len(output_prefixes) != 2:
+    for manifest_id, output_stream_paths in manifest_outputs.items():
+        if len(output_stream_paths) != 2:
             # for YouTube, we expect one audio / video stream pair per manifest
-            print(f"Manifest {manifest_id} produced outputs {output_prefixes} (expected 2)")
+            output_path_names = {p.name for p in output_stream_paths}
+            print(f"Manifest {manifest_id} produced outputs {output_path_names} (expected 2)")
             print("This will need to be manually processed")
             continue
 
@@ -429,8 +430,7 @@ def main() -> None:
             "-y",
         ]
 
-        for output_prefix in output_prefixes:
-            output_segment_file = workdir / f"{output_prefix}.ts"
+        for output_stream_path in output_stream_paths:
             command.extend(
                 (
                     "-seekable",
@@ -438,7 +438,7 @@ def main() -> None:
                     "-thread_queue_size",
                     "1024",
                     "-i",
-                    str(output_segment_file.absolute()),
+                    str(output_stream_path.absolute()),
                 )
             )
 
