@@ -217,14 +217,24 @@ def frag_iterator(
             continue
 
 
+@dataclasses.dataclass
+class StatusManager:
+    queue: queue.Queue
+    finished: SyncEvent
+
+    def __init__(self):
+        status_manager = mp.Manager()
+        self.queue = status_manager.Queue()
+        self.finished = status_manager.Event()
+
+
 def status_handler(
     handler: BaseMessageHandler,
-    status_queue: queue.Queue,
-    handler_stop: SyncEvent,
+    status: StatusManager,
 ) -> None:
-    while not handler_stop.is_set() or not status_queue.empty():
+    while not status.finished.is_set() or not status.queue.empty():
         try:
-            message = status_queue.get(timeout=1.0)
+            message = status.queue.get(timeout=1.0)
             handler.handle_message(message)
         except queue.Empty:
             pass
@@ -282,25 +292,22 @@ def stream_downloader(
 def _run(args: "YouTubeDownloader") -> None:
     # set up output handler
     handler = YTArchiveMessageHandler()
-    status_manager = mp.Manager()
+    status = StatusManager()
 
-    status_queue = status_manager.Queue()
-    handler_stop = status_manager.Event()
-
-    status_proc = mp.Process(target=status_handler, args=(handler, status_queue, handler_stop))
+    status_proc = mp.Process(target=status_handler, args=(handler, status))
     status_proc.start()
 
     resp = extract_player_response(args.url)
 
     if resp.playability_status.status in ("ERROR", "LOGIN_REQUIRED"):
         print(f"{resp.playability_status.status}: {resp.playability_status.reason}")
-        handler_stop.set()
+        status.finished.set()
         status_proc.join()
         return
 
     assert resp.video_details
     assert resp.microformat
-    status_queue.put(
+    status.queue.put(
         messages.StreamInfoMessage(
             resp.video_details.author,
             resp.video_details.title,
@@ -309,7 +316,7 @@ def _run(args: "YouTubeDownloader") -> None:
     )
 
     if args.dry_run:
-        handler_stop.set()
+        status.finished.set()
         status_proc.join()
         return
 
@@ -322,7 +329,7 @@ def _run(args: "YouTubeDownloader") -> None:
             now = datetime.datetime.now(datetime.timezone.utc)
 
             seconds_remaining = (timestamp - now).total_seconds()
-            status_queue.put(
+            status.queue.put(
                 messages.StringMessage(
                     f"No stream available (scheduled to start in {int(seconds_remaining)}s at {timestamp})"
                 )
@@ -333,7 +340,7 @@ def _run(args: "YouTubeDownloader") -> None:
                 if args.poll_interval > 0 and seconds_wait > args.poll_interval:
                     seconds_wait = args.poll_interval
         else:
-            status_queue.put(messages.StringMessage("No stream available, polling"))
+            status.queue.put(messages.StringMessage("No stream available, polling"))
 
         time.sleep(seconds_wait)
 
@@ -372,14 +379,14 @@ def _run(args: "YouTubeDownloader") -> None:
             resp,
             FormatSelector(YTPlayerMediaType.VIDEO),
             workdir,
-            status_queue,
+            status.queue,
         )
         audio_stream_dl = executor.submit(
             stream_downloader,
             resp,
             FormatSelector(YTPlayerMediaType.AUDIO),
             workdir,
-            status_queue,
+            status.queue,
         )
         for future in concurrent.futures.as_completed((video_stream_dl, audio_stream_dl)):
             exc = future.exception()
@@ -389,7 +396,7 @@ def _run(args: "YouTubeDownloader") -> None:
                 for manifest_id, output_prefixes in future.result().items():
                     manifest_outputs[manifest_id] |= output_prefixes
 
-        handler_stop.set()
+        status.finished.set()
     status_proc.join()
 
     print()
