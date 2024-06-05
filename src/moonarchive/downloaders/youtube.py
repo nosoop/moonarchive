@@ -347,16 +347,16 @@ def _run(args: "YouTubeDownloader") -> None:
     assert resp.video_details
     video_id = resp.video_details.video_id
 
+    workdir = pathlib.Path(".")
+    outdir = workdir
+
     if args.write_description:
-        desc_path = pathlib.Path(f"{video_id}.description")
+        desc_path = workdir / f"{video_id}.description"
         desc_path.write_text(
             f"https://www.youtube.com/watch?v={video_id}\n\n{resp.video_details.short_description}",
             encoding="utf8",
             newline="\n",
         )
-
-    workdir = pathlib.Path(".")
-    outdir = workdir
 
     if args.write_thumbnail:
         if resp.microformat and resp.microformat.thumbnails:
