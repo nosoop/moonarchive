@@ -343,6 +343,7 @@ def _run(args: "YouTubeDownloader") -> None:
         desc_path.write_text(
             f"https://www.youtube.com/watch?v={video_id}\n\n{resp.video_details.short_description}",
             encoding="utf8",
+            newline="\n",
         )
 
     workdir = pathlib.Path(".")
