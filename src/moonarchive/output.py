@@ -57,7 +57,7 @@ class YTArchiveMessageHandler(BaseMessageHandler, tag="ytarchive"):
                 self.print_frag_status_update()
             case msg if isinstance(msg, msgtypes.DownloadJobEndedMessage):
                 print()
-                print(f"Download job finished for format {msg.itag}")
+                print(f"Download job finished for type {msg.media_type}")
             case msg if isinstance(msg, msgtypes.StreamInfoMessage):
                 print(f"Channel: {msg.channel_name}")
                 print(f"Video Title: {msg.video_title}")

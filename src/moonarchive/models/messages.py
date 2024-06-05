@@ -39,4 +39,4 @@ class ExtractingPlayerResponseMessage(BaseMessage, tag="extracting-player-respon
 
 
 class DownloadJobEndedMessage(BaseMessage, tag="download-job-ended"):
-    itag: int
+    media_type: str

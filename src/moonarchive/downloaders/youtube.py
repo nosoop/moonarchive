@@ -250,7 +250,6 @@ def stream_downloader(
     # this is used later to determine which files to mux together
     manifest_outputs = collections.defaultdict(set)
 
-    last_itag = 0
     for frag in frag_iterator(resp, selector, status_queue):
         output_prefix = f"{frag.manifest_id}.f{frag.itag}"
         output_stream_path = output_directory / f"{output_prefix}.ts"
@@ -284,8 +283,7 @@ def stream_downloader(
                 frag.buffer.getbuffer().nbytes,
             )
         )
-        last_itag = frag.itag
-    status_queue.put(messages.DownloadJobEndedMessage(last_itag))
+    status_queue.put(messages.DownloadJobEndedMessage(selector.major_type))
     return manifest_outputs
 
 
