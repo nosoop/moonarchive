@@ -298,7 +298,11 @@ def _run(args: "YouTubeDownloader") -> None:
     resp = extract_player_response(args.url)
 
     if resp.playability_status.status in ("ERROR", "LOGIN_REQUIRED"):
-        print(f"{resp.playability_status.status}: {resp.playability_status.reason}")
+        status.queue.put(
+            messages.StreamUnavailableMessage(
+                resp.playability_status.status, resp.playability_status.reason
+            )
+        )
         status.finished.set()
         status_proc.join()
         return

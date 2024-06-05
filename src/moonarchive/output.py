@@ -68,6 +68,8 @@ class YTArchiveMessageHandler(BaseMessageHandler, tag="ytarchive"):
                 print(
                     f"Extracting player response for itag {msg.itag}; segment error {msg.http_error_code}"
                 )
+            case msg if isinstance(msg, msgtypes.StreamUnavailableMessage):
+                print(f"{msg.status}: {msg.reason}")
             case _:
                 pass
 

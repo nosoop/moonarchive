@@ -22,6 +22,11 @@ class FragmentMessage(BaseMessage, tag="fragment"):
     fragment_size: int
 
 
+class StreamUnavailableMessage(BaseMessage, tag="stream-unavailable"):
+    status: str
+    reason: str | None
+
+
 class StreamInfoMessage(BaseMessage, tag="stream-info"):
     channel_name: str
     video_title: str
