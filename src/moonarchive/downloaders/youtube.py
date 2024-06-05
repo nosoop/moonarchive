@@ -1,6 +1,5 @@
 #!/usr/bin/python3
 
-import argparse
 import collections
 import concurrent.futures
 import dataclasses
@@ -276,7 +275,7 @@ def stream_downloader(
     return manifest_outputs
 
 
-def _run(args: argparse.Namespace) -> None:
+def _run(args: "YouTubeDownloader") -> None:
     # set up output handler
     handler = YTArchiveMessageHandler()
     status_manager = mp.Manager()
@@ -439,6 +438,12 @@ def _run(args: argparse.Namespace) -> None:
         subprocess.run(command)
 
 
-class YouTubeDownloader:
-    def run(self, args: argparse.Namespace) -> None:
-        _run(args)
+class YouTubeDownloader(msgspec.Struct):
+    url: str
+    poll_interval: int
+    dry_run: bool
+    write_description: bool
+    write_thumbnail: bool
+
+    def run(self) -> None:
+        _run(self)

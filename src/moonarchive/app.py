@@ -4,6 +4,7 @@
 import argparse
 
 import colorama
+import msgspec
 
 from .downloaders.youtube import YouTubeDownloader
 
@@ -26,5 +27,5 @@ def main() -> None:
 
     args = parser.parse_args()
 
-    downloader = YouTubeDownloader()
-    downloader.run(args)
+    downloader = msgspec.convert(vars(args), type=YouTubeDownloader)
+    downloader.run()
