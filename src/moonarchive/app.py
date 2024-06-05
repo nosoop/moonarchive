@@ -2,11 +2,19 @@
 
 
 import argparse
+import contextlib
+from types import ModuleType
 
 import colorama
 import msgspec
 
 from .downloaders.youtube import YouTubeDownloader
+
+wakepy: ModuleType | None = None
+try:
+    import wakepy
+except ImportError:
+    pass
 
 colorama.just_fix_windows_console()
 
@@ -30,8 +38,25 @@ def main() -> None:
     parser.add_argument(
         "--write-thumbnail", action="store_true", help="Writes the thumbnail to an image file"
     )
+    parser.add_argument(
+        "--keep-awake",
+        action=argparse.BooleanOptionalAction,
+        help="Ensures the system stays awake while the process is running",
+        default=True,
+    )
 
     args = parser.parse_args()
 
-    downloader = msgspec.convert(vars(args), type=YouTubeDownloader)
-    downloader.run()
+    with contextlib.ExitStack() as context:
+        if args.keep_awake:
+            if not wakepy:
+                # right now wakepy is completely optional, but at the same time we want to
+                # remind users that their session may sleep when it's not available
+                raise ValueError(
+                    "wakepy is not installed; pass --no-keep-awake to suppress this error "
+                    "or install the 'keepawake' optional dependency set"
+                )
+            context.enter_context(wakepy.keep.running())
+
+        downloader = msgspec.convert(vars(args), type=YouTubeDownloader)
+        downloader.run()
