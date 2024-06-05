@@ -22,8 +22,14 @@ def main() -> None:
         help="Rechecks the stream at an interval prior to its scheduled start time",
         default=0,
     )
-    parser.add_argument("--write-description", action="store_true")
-    parser.add_argument("--write-thumbnail", action="store_true")
+    parser.add_argument(
+        "--write-description",
+        action="store_true",
+        help="Writes the stream description to a text file",
+    )
+    parser.add_argument(
+        "--write-thumbnail", action="store_true", help="Writes the thumbnail to an image file"
+    )
 
     args = parser.parse_args()
 
