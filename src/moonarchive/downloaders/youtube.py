@@ -26,6 +26,10 @@ from ..models import messages as messages
 from ..models.youtube_player import YTPlayerAdaptiveFormats, YTPlayerMediaType, YTPlayerResponse
 from ..output import BaseMessageHandler, YTArchiveMessageHandler
 
+# table to remove illegal characters on Windows
+# we currently don't use this, but we may optionally match ytarchive file output behavior later
+sanitize_table = str.maketrans({c: "_" for c in r'<>:"/\|?*'})
+
 
 def create_json_object_extractor(decl: str) -> Type[html.parser.HTMLParser]:
     class InternalHTMLParser(html.parser.HTMLParser):
