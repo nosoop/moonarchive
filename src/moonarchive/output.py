@@ -36,8 +36,14 @@ class YTArchiveMessageHandler(BaseMessageHandler, tag="ytarchive"):
     current_manifest: str = ""
 
     def print_frag_status_update(self) -> None:
+        # sequence numbers are offset by one to match ytarchive output
         print(
-            f"\r{colorama.ansi.clear_line()}Video Fragments: {self.video_seq + 1}; Audio Fragments: {self.audio_seq + 1}; Max Fragments: {self.max_seq + 1}; Total Downloaded: {self.human_total_size}; Manifest: {self.current_manifest}",
+            f"\r{colorama.ansi.clear_line()}"
+            f"Video Fragments: {self.video_seq + 1}; "
+            f"Audio Fragments: {self.audio_seq + 1}; "
+            f"Max Fragments: {self.max_seq + 1}; "
+            f"Total Downloaded: {self.human_total_size}; "
+            f"Manifest: {self.current_manifest}",
             end="",
             flush=True,
         )
