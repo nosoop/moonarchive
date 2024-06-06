@@ -54,9 +54,9 @@ class YTArchiveMessageHandler(BaseMessageHandler, tag="ytarchive"):
                 print(msg.text)
             case msg if isinstance(msg, msgtypes.FragmentMessage):
                 self.max_seq = max(self.max_seq, msg.max_fragments)
-                if msg.itag == 140:
+                if msg.media_type == "audio":
                     self.audio_seq = msg.current_fragment
-                else:
+                elif msg.media_type == "video":
                     self.video_seq = msg.current_fragment
                 self.total_downloaded += msg.fragment_size
                 self.current_manifest = msg.manifest_id

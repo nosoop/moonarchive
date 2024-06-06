@@ -17,6 +17,7 @@ class StringMessage(BaseMessage, tag="string-message"):
 class FragmentMessage(BaseMessage, tag="fragment"):
     current_fragment: int
     max_fragments: int
+    media_type: str
     itag: int
     manifest_id: str
     fragment_size: int

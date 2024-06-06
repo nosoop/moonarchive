@@ -278,6 +278,7 @@ def stream_downloader(
             messages.FragmentMessage(
                 frag.cur_seq,
                 frag.max_seq,
+                selector.major_type,
                 frag.itag,
                 frag.manifest_id,
                 frag.buffer.getbuffer().nbytes,
