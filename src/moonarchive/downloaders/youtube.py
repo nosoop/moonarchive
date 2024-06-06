@@ -131,7 +131,11 @@ def frag_iterator(
     assert current_manifest_id
 
     if selector.major_type == YTPlayerMediaType.VIDEO and selected_format.quality_label:
-        status_queue.put(messages.StreamVideoFormatMessage(selected_format.quality_label))
+        status_queue.put(
+            messages.StreamVideoFormatMessage(
+                selected_format.quality_label, selected_format.media_type.codec
+            )
+        )
     status_queue.put(messages.StringMessage(f"{itag=} {timeout=}"))
 
     client = httpx.Client(follow_redirects=True)

@@ -69,7 +69,13 @@ class YTArchiveMessageHandler(BaseMessageHandler, tag="ytarchive"):
                 print(f"Video Title: {msg.video_title}")
                 print(f"Stream starts at {msg.start_datetime}")
             case msg if isinstance(msg, msgtypes.StreamVideoFormatMessage):
-                print(f"Selected quality: {msg.quality_label}")
+                if not msg.codec:
+                    print(f"Selected quality: {msg.quality_label} (unknown codec?)")
+                else:
+                    display_media_type = msg.codec
+                    if msg.codec.startswith("avc1"):
+                        display_media_type = "h264"
+                    print(f"Selected quality: {msg.quality_label} ({display_media_type})")
             case msg if isinstance(msg, msgtypes.ExtractingPlayerResponseMessage):
                 print(
                     f"Extracting player response for itag {msg.itag}; segment error {msg.http_error_code}"

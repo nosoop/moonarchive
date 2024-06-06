@@ -36,7 +36,7 @@ class StreamInfoMessage(BaseMessage, tag="stream-info"):
 
 class StreamVideoFormatMessage(BaseMessage, tag="stream-video-format"):
     quality_label: str
-    # TODO: write codec (vp9 / h264)
+    codec: str | None
 
 
 class ExtractingPlayerResponseMessage(BaseMessage, tag="extracting-player-response"):
