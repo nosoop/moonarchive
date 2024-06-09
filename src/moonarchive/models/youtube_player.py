@@ -29,6 +29,15 @@ class YTPlayerAdaptiveFormatType(NamedTuple):
     subtype: str
     codec: str | None = None
 
+    @property
+    def codec_primary(self) -> str | None:
+        # returns the codec primary component
+        # (all avc1 / mp4a profiles with trailing options removed)
+        if self.codec is None:
+            return None
+        fourcc, *_ = self.codec.partition(".")
+        return fourcc
+
 
 class YTPlayerMainAppWebResponseContext(YTJSONStruct):
     logged_out: bool

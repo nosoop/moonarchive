@@ -85,16 +85,40 @@ class FormatSelector:
 
     def select(self, formats: list[YTPlayerAdaptiveFormats]) -> list[YTPlayerAdaptiveFormats]:
         out_formats = filter(lambda x: x.media_type.type == self.major_type, formats)
-        if self.codec is not None and any(self.codec == x.media_type.codec for x in formats):
-            out_formats = filter(lambda x: self.codec == x.media_type.codec, out_formats)
 
-        # TODO: allow for prioritizing VP9 over AVC1 at the same resolution
         sort_key = None
         if self.major_type == YTPlayerMediaType.VIDEO:
             sort_key = operator.attrgetter("width")
+
+            # note that the result of _preferred_codec_sorter is negative since this is reversed
+            # at the end of the sort
+            if self.codec:
+
+                def _sort(fmt: YTPlayerAdaptiveFormats) -> tuple[int, int]:
+                    assert fmt.width is not None
+                    return (fmt.width, -FormatSelector._preferred_codec_sorter(self.codec)(fmt))
+
+                # the typing is super clunky and we can't just return comparables, so we simply
+                # disregard this for now
+                sort_key = _sort  # type: ignore
         else:
             sort_key = operator.attrgetter("bitrate")
         return sorted(out_formats, key=sort_key, reverse=True)
+
+    @staticmethod
+    def _preferred_codec_sorter(*codecs: str | None):
+        # codecs should be specified with the highest value first
+        if not codecs:
+            codecs = tuple()
+
+        def _sort(fmt: YTPlayerAdaptiveFormats) -> int:
+            try:
+                return codecs.index(fmt.media_type.codec_primary)
+            except ValueError:
+                # return value higher than given tuple
+                return len(codecs)
+
+        return _sort
 
 
 class FragmentInfo(msgspec.Struct, kw_only=True):
@@ -380,11 +404,15 @@ def _run(args: "YouTubeDownloader") -> None:
 
     manifest_outputs: dict[str, set[pathlib.Path]] = collections.defaultdict(set)
     with concurrent.futures.ProcessPoolExecutor() as executor:
+        vidsel = FormatSelector(YTPlayerMediaType.VIDEO)
+        if args.prioritize_vp9:
+            vidsel = FormatSelector(YTPlayerMediaType.VIDEO, "vp9")
+
         # tasks to write streams to file
         video_stream_dl = executor.submit(
             stream_downloader,
             resp,
-            FormatSelector(YTPlayerMediaType.VIDEO),
+            vidsel,
             workdir,
             status.queue,
         )
@@ -463,6 +491,7 @@ class YouTubeDownloader(msgspec.Struct):
     dry_run: bool
     write_description: bool
     write_thumbnail: bool
+    prioritize_vp9: bool
 
     def run(self) -> None:
         _run(self)

@@ -44,6 +44,13 @@ def main() -> None:
         help="Ensures the system stays awake while the process is running",
         default=True,
     )
+    parser.add_argument(
+        "--vp9",
+        action=argparse.BooleanOptionalAction,
+        dest="prioritize_vp9",
+        help="Prioritizes vp9 over h264 when both codecs are present at a given resolution",
+        default=False,
+    )
 
     args = parser.parse_args()
 
