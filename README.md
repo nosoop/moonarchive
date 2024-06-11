@@ -35,6 +35,13 @@ environment so the libraries are isolated from the rest of the system.
 2. At minimum, `moonarchive ${URL}` on an upcoming or currently live stream to download;
 `moonarchive --help` to view all possible options.
 
+For development:
+
+1. Use `[keepawake,dev]` with the `pip` command above to install all packages, including those
+for development.
+2. Install [`just`](https://github.com/casey/just).
+3. Make your changes.  Prior to committing; run `just test` and `just format`.
+
 ## Dependencies
 
 - Python 3.11 or newer is required.  The installation will bring in a number of other
