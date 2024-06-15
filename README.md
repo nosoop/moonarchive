@@ -57,6 +57,9 @@ manager.
 - Detection of updated manifests.  See [ytarchive#56][].  tl;dr in certain situations,
 ytarchive will appear to stall if the streamer changes certain settings mid-stream.
 
+Important note on cookie authentication:  YouTube frequently rotates cookies; while a given file
+will work during the start of a stream, you will likely need to re-export the file occasionally.
+
 [ytarchive#56]: https://github.com/Kethsar/ytarchive/issues/56
 
 ## Contributions
