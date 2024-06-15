@@ -3,6 +3,7 @@
 
 import argparse
 import contextlib
+import pathlib
 from types import ModuleType
 
 import colorama
@@ -50,6 +51,11 @@ def main() -> None:
         dest="prioritize_vp9",
         help="Prioritizes vp9 over h264 when both codecs are present at a given resolution",
         default=False,
+    )
+    parser.add_argument(
+        "--ffmpeg-path",
+        type=pathlib.Path,
+        help="Path to ffmpeg binary, if there isn't one you want to use in your PATH",
     )
 
     args = parser.parse_args()

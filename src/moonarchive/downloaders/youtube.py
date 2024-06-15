@@ -449,7 +449,7 @@ def _run(args: "YouTubeDownloader") -> None:
         # raising the log level to 'error' instead of 'warning' suppresses MOOV atom warnings
         # those warnings being dumped to stdout has a non-negligible performance impact
         command = [
-            "ffmpeg",
+            str(args.ffmpeg_path) if args.ffmpeg_path else "ffmpeg",
             "-v",
             "error",
             "-stats",
@@ -492,6 +492,7 @@ class YouTubeDownloader(msgspec.Struct):
     write_description: bool
     write_thumbnail: bool
     prioritize_vp9: bool
+    ffmpeg_path: pathlib.Path | None
 
     def run(self) -> None:
         _run(self)
