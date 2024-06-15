@@ -40,7 +40,7 @@ For development:
 1. Use `[keepawake,dev]` with the `pip` command above to install all packages, including those
 for development.
 2. Install [`just`](https://github.com/casey/just).
-3. Make your changes.  Prior to committing; run `just test` and `just format`.
+3. Make your changes.  Prior to committing, run `just test` and `just format`.
 
 ## Dependencies
 
@@ -70,7 +70,7 @@ would be willing to maintain the project or lift the important parts of the code
 better-maintained projects.  The less work I have to do, the better!
 
 If you are interested in opening a pull request with the sole purpose of getting it merged,
-please poke me with an issue prior to be certain that I'm interested in taking it.
+please poke me with an issue beforehand to be certain that I'm interested in taking it.
 
 ## License
 
