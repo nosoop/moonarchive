@@ -57,6 +57,13 @@ def main() -> None:
         type=pathlib.Path,
         help="Path to ffmpeg binary, if there isn't one you want to use in your PATH",
     )
+    parser.add_argument(
+        "-c",
+        "--cookies",
+        type=pathlib.Path,
+        dest="cookie_file",
+        help="Cookies file in Netscape format",
+    )
 
     args = parser.parse_args()
 

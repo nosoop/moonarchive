@@ -15,6 +15,7 @@ import subprocess
 import time
 import urllib.parse
 import urllib.request
+from http.cookiejar import MozillaCookieJar
 from multiprocessing.synchronize import Event as SyncEvent
 from typing import Iterator, Type
 
@@ -60,17 +61,24 @@ def create_json_object_extractor(decl: str) -> Type[html.parser.HTMLParser]:
 PlayerResponseExtractor = create_json_object_extractor("var ytInitialPlayerResponse =")
 
 
-def extract_player_response(url: str) -> YTPlayerResponse:
+def extract_player_response(url: str, cookie_file: pathlib.Path | None) -> YTPlayerResponse:
     response_extractor = PlayerResponseExtractor()
-
     transport = httpx.HTTPTransport(retries=10)
-    with httpx.Client(transport=transport, follow_redirects=True) as client:
+    cookies = _cookies_from_filepath(cookie_file)
+    with httpx.Client(transport=transport, follow_redirects=True, cookies=cookies) as client:
         r = client.get(url)
         response_extractor.feed(r.text)
 
         if not response_extractor.result:  # type: ignore
             raise ValueError("Could not extract player response")
         return msgspec.json.decode(response_extractor.result, type=YTPlayerResponse)  # type: ignore
+
+
+def _cookies_from_filepath(cookie_file: pathlib.Path | None) -> httpx.Cookies:
+    jar = MozillaCookieJar()
+    if cookie_file:
+        jar.load(str(cookie_file))
+    return httpx.Cookies(jar)
 
 
 @dataclasses.dataclass
@@ -134,7 +142,10 @@ class WrittenFragmentInfo(msgspec.Struct):
 
 
 def frag_iterator(
-    resp: YTPlayerResponse, selector: FormatSelector, status_queue: queue.Queue
+    resp: YTPlayerResponse,
+    selector: FormatSelector,
+    status_queue: queue.Queue,
+    cookie_file: pathlib.Path | None,
 ) -> Iterator[FragmentInfo]:
     if not resp.streaming_data or not resp.video_details:
         raise ValueError("Received a non-streamable player response")
@@ -172,6 +183,7 @@ def frag_iterator(
         url = manifest.format_urls[itag]
 
         try:
+            # it doesn't look like we need cookies for fetching fragments
             fresp = client.get(url.substitute(sequence=cur_seq), timeout=timeout * 2)
             fresp.raise_for_status()
 
@@ -196,7 +208,7 @@ def frag_iterator(
             )
 
             # we need this call to be resilient to failures, otherwise we may have an incomplete download
-            try_resp = extract_player_response(video_url)
+            try_resp = extract_player_response(video_url, cookie_file)
             if not try_resp:
                 continue
             resp = try_resp
@@ -277,12 +289,13 @@ def stream_downloader(
     selector: FormatSelector,
     output_directory: pathlib.Path,
     status_queue: queue.Queue,
+    cookie_file: pathlib.Path | None,
 ) -> dict[str, set[pathlib.Path]]:
     # record the manifests and formats we're downloading
     # this is used later to determine which files to mux together
     manifest_outputs = collections.defaultdict(set)
 
-    for frag in frag_iterator(resp, selector, status_queue):
+    for frag in frag_iterator(resp, selector, status_queue, cookie_file):
         output_prefix = f"{frag.manifest_id}.f{frag.itag}"
         output_stream_path = output_directory / f"{output_prefix}.ts"
 
@@ -328,7 +341,7 @@ def _run(args: "YouTubeDownloader") -> None:
     status_proc = mp.Process(target=status_handler, args=(handler, status))
     status_proc.start()
 
-    resp = extract_player_response(args.url)
+    resp = extract_player_response(args.url, args.cookie_file)
 
     if resp.playability_status.status in ("ERROR", "LOGIN_REQUIRED", "UNPLAYABLE"):
         status.queue.put(
@@ -379,7 +392,7 @@ def _run(args: "YouTubeDownloader") -> None:
 
         time.sleep(seconds_wait)
 
-        resp = extract_player_response(args.url)
+        resp = extract_player_response(args.url, args.cookie_file)
 
     assert resp.video_details
     video_id = resp.video_details.video_id
@@ -419,6 +432,7 @@ def _run(args: "YouTubeDownloader") -> None:
             vidsel,
             workdir,
             status.queue,
+            args.cookie_file,
         )
         audio_stream_dl = executor.submit(
             stream_downloader,
@@ -426,6 +440,7 @@ def _run(args: "YouTubeDownloader") -> None:
             FormatSelector(YTPlayerMediaType.AUDIO),
             workdir,
             status.queue,
+            args.cookie_file,
         )
         for future in concurrent.futures.as_completed((video_stream_dl, audio_stream_dl)):
             exc = future.exception()
@@ -497,6 +512,7 @@ class YouTubeDownloader(msgspec.Struct):
     write_thumbnail: bool
     prioritize_vp9: bool
     ffmpeg_path: pathlib.Path | None
+    cookie_file: pathlib.Path | None
 
     def run(self) -> None:
         _run(self)
