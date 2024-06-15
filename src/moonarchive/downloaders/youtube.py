@@ -6,7 +6,6 @@ import dataclasses
 import datetime
 import html.parser
 import io
-import json
 import multiprocessing as mp
 import operator
 import pathlib
@@ -127,6 +126,11 @@ class FragmentInfo(msgspec.Struct, kw_only=True):
     itag: int
     manifest_id: str
     buffer: io.BytesIO
+
+
+class WrittenFragmentInfo(msgspec.Struct):
+    cur_seq: int
+    length: int
 
 
 def frag_iterator(
@@ -290,11 +294,11 @@ def stream_downloader(
         with output_stream_path.with_suffix(".fragdata.txt").open(
             "at", encoding="utf8"
         ) as fragdata:
-            payload = {
-                "cur_seq": frag.cur_seq,
-                "length": frag.buffer.getbuffer().nbytes,
-            }
-            fragdata.write(json.dumps(payload) + "\n")
+            payload = WrittenFragmentInfo(
+                cur_seq=frag.cur_seq,
+                length=frag.buffer.getbuffer().nbytes,
+            )
+            fragdata.write(msgspec.json.encode(payload).decode("utf8") + "\n")
 
         manifest_outputs[frag.manifest_id].add(output_stream_path)
 
