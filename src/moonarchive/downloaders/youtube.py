@@ -75,8 +75,10 @@ def extract_player_response(url: str, cookie_file: pathlib.Path | None) -> YTPla
 
 
 def _cookies_from_filepath(cookie_file: pathlib.Path | None) -> httpx.Cookies:
+    # since sessions refresh frequently, always grab cookies from file so they're
+    # updated out-of-band
     jar = MozillaCookieJar()
-    if cookie_file:
+    if cookie_file and cookie_file.is_file() and cookie_file.exists():
         jar.load(str(cookie_file))
     return httpx.Cookies(jar)
 
