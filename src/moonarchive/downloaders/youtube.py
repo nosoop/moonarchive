@@ -306,14 +306,12 @@ def stream_downloader(
         # this should help in situations where the stream is rotated between portrait and
         # landscape; that maintains the same manifest, but ffmpeg ends up applying the initial
         # dimensions for the entire video - that causes a broken image for the rest of the stream
-        with output_stream_path.with_suffix(".fragdata.txt").open(
-            "at", encoding="utf8"
-        ) as fragdata:
+        with output_stream_path.with_suffix(".fragdata.txt").open("ab") as fragdata:
             payload = WrittenFragmentInfo(
                 cur_seq=frag.cur_seq,
                 length=frag.buffer.getbuffer().nbytes,
             )
-            fragdata.write(msgspec.json.encode(payload).decode("utf8") + "\n")
+            fragdata.write(msgspec.json.encode(payload) + b"\n")
 
         manifest_outputs[frag.manifest_id].add(output_stream_path)
 
