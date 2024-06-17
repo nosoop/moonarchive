@@ -258,6 +258,8 @@ def frag_iterator(
                     itag = preferred_format.itag
 
                     status_queue.put(messages.StringMessage(f"{itag=} {timeout=}"))
+            elif exc.response.status_code == 401:
+                time.sleep(10)
         except (httpx.HTTPError, httpx.StreamError):
             # for everything else we just retry
             continue
