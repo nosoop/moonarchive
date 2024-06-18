@@ -1,23 +1,18 @@
 #!/usr/bin/python3
 
+import asyncio
 import collections
-import concurrent.futures
 import dataclasses
 import datetime
 import html.parser
 import io
-import multiprocessing as mp
 import operator
 import pathlib
-import queue
 import shutil
-import subprocess
-import time
 import urllib.parse
 import urllib.request
 from http.cookiejar import MozillaCookieJar
-from multiprocessing.synchronize import Event as SyncEvent
-from typing import Iterator, Type
+from typing import AsyncIterator, Type
 
 import httpx
 import msgspec
@@ -61,12 +56,16 @@ def create_json_object_extractor(decl: str) -> Type[html.parser.HTMLParser]:
 PlayerResponseExtractor = create_json_object_extractor("var ytInitialPlayerResponse =")
 
 
-def extract_player_response(url: str, cookie_file: pathlib.Path | None) -> YTPlayerResponse:
+async def extract_player_response(
+    url: str, cookie_file: pathlib.Path | None
+) -> YTPlayerResponse:
     response_extractor = PlayerResponseExtractor()
-    transport = httpx.HTTPTransport(retries=10)
+    transport = httpx.AsyncHTTPTransport(retries=10)
     cookies = _cookies_from_filepath(cookie_file)
-    with httpx.Client(transport=transport, follow_redirects=True, cookies=cookies) as client:
-        r = client.get(url)
+    async with httpx.AsyncClient(
+        transport=transport, follow_redirects=True, cookies=cookies
+    ) as client:
+        r = await client.get(url)
         response_extractor.feed(r.text)
 
         if not response_extractor.result:  # type: ignore
@@ -143,12 +142,12 @@ class WrittenFragmentInfo(msgspec.Struct):
     length: int
 
 
-def frag_iterator(
+async def frag_iterator(
     resp: YTPlayerResponse,
     selector: FormatSelector,
-    status_queue: queue.Queue,
+    status_queue: asyncio.Queue,
     cookie_file: pathlib.Path | None,
-) -> Iterator[FragmentInfo]:
+) -> AsyncIterator[FragmentInfo]:
     if not resp.streaming_data or not resp.video_details:
         raise ValueError("Received a non-streamable player response")
 
@@ -172,21 +171,21 @@ def frag_iterator(
     assert current_manifest_id
 
     if selector.major_type == YTPlayerMediaType.VIDEO and selected_format.quality_label:
-        status_queue.put(
+        status_queue.put_nowait(
             messages.StreamVideoFormatMessage(
                 selected_format.quality_label, selected_format.media_type.codec
             )
         )
-    status_queue.put(messages.StringMessage(f"{itag=} {timeout=}"))
+    status_queue.put_nowait(messages.StringMessage(f"{itag=} {timeout=}"))
 
-    client = httpx.Client(follow_redirects=True)
+    client = httpx.AsyncClient(follow_redirects=True)
 
     while True:
         url = manifest.format_urls[itag]
 
         try:
             # it doesn't look like we need cookies for fetching fragments
-            fresp = client.get(url.substitute(sequence=cur_seq), timeout=timeout * 2)
+            fresp = await client.get(url.substitute(sequence=cur_seq), timeout=timeout * 2)
             fresp.raise_for_status()
 
             new_max_seq = int(fresp.headers.get("X-Head-Seqnum", -1))
@@ -205,12 +204,12 @@ def frag_iterator(
             yield info
             cur_seq += 1
         except httpx.HTTPStatusError as exc:
-            status_queue.put(
+            status_queue.put_nowait(
                 messages.ExtractingPlayerResponseMessage(itag, exc.response.status_code)
             )
 
             # we need this call to be resilient to failures, otherwise we may have an incomplete download
-            try_resp = extract_player_response(video_url, cookie_file)
+            try_resp = await extract_player_response(video_url, cookie_file)
             if not try_resp:
                 continue
             resp = try_resp
@@ -237,7 +236,7 @@ def frag_iterator(
 
                 if not resp.streaming_data:
                     # stream is offline; sleep and retry previous fragment
-                    time.sleep(15)
+                    await asyncio.sleep(15)
                     continue
 
                 if not resp.streaming_data.dash_manifest_id:
@@ -258,9 +257,9 @@ def frag_iterator(
                     preferred_format, *_ = selector.select(resp.streaming_data.adaptive_formats)
                     itag = preferred_format.itag
 
-                    status_queue.put(messages.StringMessage(f"{itag=} {timeout=}"))
+                    status_queue.put_nowait(messages.StringMessage(f"{itag=} {timeout=}"))
             elif exc.response.status_code == 401:
-                time.sleep(10)
+                await asyncio.sleep(10)
         except (httpx.HTTPError, httpx.StreamError):
             # for everything else we just retry
             continue
@@ -268,39 +267,38 @@ def frag_iterator(
 
 @dataclasses.dataclass
 class StatusManager:
-    queue: queue.Queue
-    finished: SyncEvent
+    queue: asyncio.Queue
+    finished: asyncio.Event
 
     def __init__(self):
-        status_manager = mp.Manager()
-        self.queue = status_manager.Queue()
-        self.finished = status_manager.Event()
+        self.queue = asyncio.Queue()
+        self.finished = asyncio.Event()
 
 
-def status_handler(
+async def status_handler(
     handler: BaseMessageHandler,
     status: StatusManager,
 ) -> None:
     while not status.finished.is_set() or not status.queue.empty():
         try:
-            message = status.queue.get(timeout=1.0)
+            message = await asyncio.wait_for(status.queue.get(), timeout=1.0)
             handler.handle_message(message)
-        except queue.Empty:
+        except TimeoutError:
             pass
 
 
-def stream_downloader(
+async def stream_downloader(
     resp: YTPlayerResponse,
     selector: FormatSelector,
     output_directory: pathlib.Path,
-    status_queue: queue.Queue,
+    status_queue: asyncio.Queue,
     cookie_file: pathlib.Path | None,
 ) -> dict[str, set[pathlib.Path]]:
     # record the manifests and formats we're downloading
     # this is used later to determine which files to mux together
     manifest_outputs = collections.defaultdict(set)
 
-    for frag in frag_iterator(resp, selector, status_queue, cookie_file):
+    async for frag in frag_iterator(resp, selector, status_queue, cookie_file):
         output_prefix = f"{frag.manifest_id}.f{frag.itag}"
         output_stream_path = output_directory / f"{output_prefix}.ts"
 
@@ -320,9 +318,9 @@ def stream_downloader(
 
         frag.buffer.seek(0)
         with output_stream_path.open("ab") as o:
-            shutil.copyfileobj(frag.buffer, o)
+            await asyncio.to_thread(shutil.copyfileobj, frag.buffer, o)
 
-        status_queue.put(
+        status_queue.put_nowait(
             messages.FragmentMessage(
                 frag.cur_seq,
                 frag.max_seq,
@@ -332,33 +330,32 @@ def stream_downloader(
                 frag.buffer.getbuffer().nbytes,
             )
         )
-    status_queue.put(messages.DownloadJobEndedMessage(selector.major_type))
+    status_queue.put_nowait(messages.DownloadJobEndedMessage(selector.major_type))
     return manifest_outputs
 
 
-def _run(args: "YouTubeDownloader") -> None:
+async def _run(args: "YouTubeDownloader") -> None:
     # set up output handler
     handler = YTArchiveMessageHandler()
     status = StatusManager()
 
-    status_proc = mp.Process(target=status_handler, args=(handler, status))
-    status_proc.start()
+    status_proc = asyncio.create_task(status_handler(handler, status))
 
-    resp = extract_player_response(args.url, args.cookie_file)
+    resp = await extract_player_response(args.url, args.cookie_file)
 
     if resp.playability_status.status in ("ERROR", "LOGIN_REQUIRED", "UNPLAYABLE"):
-        status.queue.put(
+        status.queue.put_nowait(
             messages.StreamUnavailableMessage(
                 resp.playability_status.status, resp.playability_status.reason
             )
         )
         status.finished.set()
-        status_proc.join()
+        await status_proc
         return
 
     assert resp.video_details
     assert resp.microformat
-    status.queue.put(
+    status.queue.put_nowait(
         messages.StreamInfoMessage(
             resp.video_details.author,
             resp.video_details.title,
@@ -368,7 +365,7 @@ def _run(args: "YouTubeDownloader") -> None:
 
     if args.dry_run:
         status.finished.set()
-        status_proc.join()
+        await status_proc
         return
 
     while not resp.streaming_data:
@@ -380,7 +377,7 @@ def _run(args: "YouTubeDownloader") -> None:
             now = datetime.datetime.now(datetime.timezone.utc)
 
             seconds_remaining = (timestamp - now).total_seconds()
-            status.queue.put(
+            status.queue.put_nowait(
                 messages.StringMessage(
                     f"No stream available (scheduled to start in {int(seconds_remaining)}s at {timestamp})"
                 )
@@ -391,11 +388,11 @@ def _run(args: "YouTubeDownloader") -> None:
                 if args.poll_interval > 0 and seconds_wait > args.poll_interval:
                     seconds_wait = args.poll_interval
         else:
-            status.queue.put(messages.StringMessage("No stream available, polling"))
+            status.queue.put_nowait(messages.StringMessage("No stream available, polling"))
 
-        time.sleep(seconds_wait)
+        await asyncio.sleep(seconds_wait)
 
-        resp = extract_player_response(args.url, args.cookie_file)
+        resp = await extract_player_response(args.url, args.cookie_file)
 
     assert resp.video_details
     video_id = resp.video_details.video_id
@@ -423,38 +420,40 @@ def _run(args: "YouTubeDownloader") -> None:
             thumb_dest_path.write_bytes(r.content)
 
     manifest_outputs: dict[str, set[pathlib.Path]] = collections.defaultdict(set)
-    with concurrent.futures.ProcessPoolExecutor() as executor:
+    async with asyncio.TaskGroup() as tg:
         vidsel = FormatSelector(YTPlayerMediaType.VIDEO)
         if args.prioritize_vp9:
             vidsel = FormatSelector(YTPlayerMediaType.VIDEO, "vp9")
 
         # tasks to write streams to file
-        video_stream_dl = executor.submit(
-            stream_downloader,
-            resp,
-            vidsel,
-            workdir,
-            status.queue,
-            args.cookie_file,
+        video_stream_dl = tg.create_task(
+            stream_downloader(
+                resp,
+                vidsel,
+                workdir,
+                status.queue,
+                args.cookie_file,
+            )
         )
-        audio_stream_dl = executor.submit(
-            stream_downloader,
-            resp,
-            FormatSelector(YTPlayerMediaType.AUDIO),
-            workdir,
-            status.queue,
-            args.cookie_file,
+        audio_stream_dl = tg.create_task(
+            stream_downloader(
+                resp,
+                FormatSelector(YTPlayerMediaType.AUDIO),
+                workdir,
+                status.queue,
+                args.cookie_file,
+            )
         )
-        for future in concurrent.futures.as_completed((video_stream_dl, audio_stream_dl)):
-            exc = future.exception()
-            if exc:
-                print(type(exc), exc)
-            else:
-                for manifest_id, output_prefixes in future.result().items():
+        for task in asyncio.as_completed((video_stream_dl, audio_stream_dl)):
+            try:
+                result = await task
+                for manifest_id, output_prefixes in result.items():
                     manifest_outputs[manifest_id] |= output_prefixes
+            except Exception as exc:
+                print(type(exc), exc)
 
         status.finished.set()
-    status_proc.join()
+    await status_proc
 
     print()
     print(manifest_outputs)
@@ -470,8 +469,8 @@ def _run(args: "YouTubeDownloader") -> None:
 
         # raising the log level to 'error' instead of 'warning' suppresses MOOV atom warnings
         # those warnings being dumped to stdout has a non-negligible performance impact
+        program = str(args.ffmpeg_path) if args.ffmpeg_path else "ffmpeg"
         command = [
-            str(args.ffmpeg_path) if args.ffmpeg_path else "ffmpeg",
             "-v",
             "error",
             "-stats",
@@ -505,7 +504,8 @@ def _run(args: "YouTubeDownloader") -> None:
         output_mux_file = outdir / f"{manifest_id}.mp4"
         command.extend((str(output_mux_file.absolute()),))
 
-        subprocess.run(command)
+        proc = await asyncio.create_subprocess_exec(program, *command)
+        await proc.wait()
 
 
 class YouTubeDownloader(msgspec.Struct):
@@ -519,4 +519,4 @@ class YouTubeDownloader(msgspec.Struct):
     cookie_file: pathlib.Path | None
 
     def run(self) -> None:
-        _run(self)
+        asyncio.run(_run(self))
