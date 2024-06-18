@@ -475,6 +475,7 @@ def _run(args: "YouTubeDownloader") -> None:
             "-v",
             "error",
             "-stats",
+            "-nostdin",
             "-y",
         ]
 
