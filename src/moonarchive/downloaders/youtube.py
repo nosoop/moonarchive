@@ -216,7 +216,8 @@ def frag_iterator(
             resp = try_resp
 
             if exc.response.status_code == 403:
-                # retrieve a fresh manifest
+                # stream access expired; retrieve a fresh manifest
+                # the stream may have finished while we were mid-download, so don't check that here
                 if not resp.streaming_data:
                     return
                 manifest = resp.streaming_data.get_dash_manifest()
@@ -248,7 +249,7 @@ def frag_iterator(
 
                 if current_manifest_id != resp.streaming_data.dash_manifest_id:
                     # player response has a different manfifest ID than what we're aware of
-                    # reset the sequence counters
+                    # reset the sequence counter
                     cur_seq = 0
                     current_manifest_id = resp.streaming_data.dash_manifest_id
 
