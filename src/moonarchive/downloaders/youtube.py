@@ -268,18 +268,20 @@ async def frag_iterator(
 @dataclasses.dataclass
 class StatusManager:
     queue: asyncio.Queue
-    finished: asyncio.Event
+
+    # bind the lifetime of the manager to the task creating it
+    parent_task: asyncio.Task
 
     def __init__(self):
         self.queue = asyncio.Queue()
-        self.finished = asyncio.Event()
+        self.parent_task = asyncio.current_task()
 
 
 async def status_handler(
     handler: BaseMessageHandler,
     status: StatusManager,
 ) -> None:
-    while not status.finished.is_set() or not status.queue.empty():
+    while not status.parent_task.done() or not status.queue.empty():
         try:
             message = await asyncio.wait_for(status.queue.get(), timeout=1.0)
             handler.handle_message(message)
@@ -349,8 +351,6 @@ async def _run(args: "YouTubeDownloader") -> None:
                 resp.playability_status.status, resp.playability_status.reason
             )
         )
-        status.finished.set()
-        await status_proc
         return
 
     assert resp.video_details
@@ -364,8 +364,6 @@ async def _run(args: "YouTubeDownloader") -> None:
     )
 
     if args.dry_run:
-        status.finished.set()
-        await status_proc
         return
 
     while not resp.streaming_data:
@@ -451,9 +449,6 @@ async def _run(args: "YouTubeDownloader") -> None:
                     manifest_outputs[manifest_id] |= output_prefixes
             except Exception as exc:
                 print(type(exc), exc)
-
-        status.finished.set()
-    await status_proc
 
     print()
     print(manifest_outputs)
