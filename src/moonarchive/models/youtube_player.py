@@ -14,6 +14,7 @@ from .youtube import YTJSONStruct
 class YTPlayerMediaType(enum.StrEnum):
     VIDEO = "video"
     AUDIO = "audio"
+    TEXT = "text"  # TODO: code raised on this in a premiere but I didn't get the exact type
 
     @staticmethod
     def from_str(fmtstr: str) -> "YTPlayerMediaType":
@@ -21,6 +22,8 @@ class YTPlayerMediaType(enum.StrEnum):
             return YTPlayerMediaType.VIDEO
         elif fmtstr in ("audio",):
             return YTPlayerMediaType.AUDIO
+        elif fmtstr in ("text",):
+            return YTPlayerMediaType.TEXT
         raise NotImplementedError(f"Unknown media type {fmtstr}")
 
 
