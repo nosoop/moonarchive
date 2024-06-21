@@ -10,6 +10,7 @@ import colorama
 import msgspec
 
 from .downloaders.youtube import YouTubeDownloader
+from .output import YTArchiveMessageHandler
 
 wakepy: ModuleType | None = None
 try:
@@ -78,5 +79,8 @@ def main() -> None:
                 )
             context.enter_context(wakepy.keep.running())
 
+        handler = YTArchiveMessageHandler()
+
         downloader = msgspec.convert(vars(args), type=YouTubeDownloader)
+        downloader.handlers.append(handler)
         downloader.run()

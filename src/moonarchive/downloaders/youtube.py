@@ -19,7 +19,7 @@ import msgspec
 
 from ..models import messages as messages
 from ..models.youtube_player import YTPlayerAdaptiveFormats, YTPlayerMediaType, YTPlayerResponse
-from ..output import BaseMessageHandler, YTArchiveMessageHandler
+from ..output import BaseMessageHandler
 
 # table to remove illegal characters on Windows
 # we currently don't use this, but we may optionally match ytarchive file output behavior later
@@ -278,13 +278,14 @@ class StatusManager:
 
 
 async def status_handler(
-    handler: BaseMessageHandler,
+    handlers: list[BaseMessageHandler],
     status: StatusManager,
 ) -> None:
     while not status.parent_task.done() or not status.queue.empty():
         try:
             message = await asyncio.wait_for(status.queue.get(), timeout=1.0)
-            handler.handle_message(message)
+            for handler in handlers:
+                handler.handle_message(message)
         except TimeoutError:
             pass
 
@@ -338,11 +339,10 @@ async def stream_downloader(
 
 async def _run(args: "YouTubeDownloader") -> None:
     # set up output handler
-    handler = YTArchiveMessageHandler()
     status = StatusManager()
 
     # hold a reference to the output handler so it doesn't get GC'd until we're out of scope
-    jobs = {asyncio.create_task(status_handler(handler, status))}  # noqa: F841
+    jobs = {asyncio.create_task(status_handler(args.handlers, status))}  # noqa: F841
 
     resp = await extract_player_response(args.url, args.cookie_file)
 
@@ -515,6 +515,7 @@ class YouTubeDownloader(msgspec.Struct):
     prioritize_vp9: bool
     ffmpeg_path: pathlib.Path | None
     cookie_file: pathlib.Path | None
+    handlers: list[BaseMessageHandler] = msgspec.field(default_factory=list)
 
     def run(self) -> None:
         asyncio.run(_run(self))
