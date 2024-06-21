@@ -73,8 +73,11 @@ would be willing to maintain the project or lift the important parts of the code
 better-maintained projects.  The less work I have to do, the better!
 
 If you are interested in opening a pull request with the sole purpose of getting it merged,
-please poke me with an issue beforehand to be certain that I'm interested in taking it.
+please poke me with an issue beforehand to confirm that I'm both interested in taking it and
+not already working on something similar.
 
 ## License
 
-Released under the Zero-Clause BSD license.
+All code in this repository is released under the Zero-Clause BSD license.  That said, please
+also review the dependencies to ensure compliance with those libraries as well should you be
+distributing the code.
