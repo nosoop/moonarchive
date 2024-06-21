@@ -341,7 +341,8 @@ async def _run(args: "YouTubeDownloader") -> None:
     handler = YTArchiveMessageHandler()
     status = StatusManager()
 
-    status_proc = asyncio.create_task(status_handler(handler, status))
+    # hold a reference to the output handler so it doesn't get GC'd until we're out of scope
+    jobs = {asyncio.create_task(status_handler(handler, status))}  # noqa: F841
 
     resp = await extract_player_response(args.url, args.cookie_file)
 
