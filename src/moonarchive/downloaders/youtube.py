@@ -503,6 +503,8 @@ async def _run(args: "YouTubeDownloader") -> None:
         proc = await asyncio.create_subprocess_exec(program, *command)
         await proc.wait()
 
+    jobs.clear()
+
 
 class YouTubeDownloader(msgspec.Struct):
     url: str
