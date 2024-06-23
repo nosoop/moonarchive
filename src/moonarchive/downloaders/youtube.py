@@ -451,16 +451,21 @@ async def _run(args: "YouTubeDownloader") -> None:
             except Exception as exc:
                 print(type(exc), exc)
 
-    print()
-    print(manifest_outputs)
+    status.queue.put_nowait(messages.StringMessage(str(manifest_outputs)))
 
     # output a file for each manifest we received fragments for
     for manifest_id, output_stream_paths in manifest_outputs.items():
         if len(output_stream_paths) != 2:
             # for YouTube, we expect one audio / video stream pair per manifest
             output_path_names = {p.name for p in output_stream_paths}
-            print(f"Manifest {manifest_id} produced outputs {output_path_names} (expected 2)")
-            print("This will need to be manually processed")
+            status.queue.put_nowait(
+                messages.StringMessage(
+                    f"Manifest {manifest_id} produced outputs {output_path_names} (expected 2)"
+                )
+            )
+            status.queue.put_nowait(
+                messages.StringMessage("This will need to be manually processed")
+            )
             continue
 
         # raising the log level to 'error' instead of 'warning' suppresses MOOV atom warnings
