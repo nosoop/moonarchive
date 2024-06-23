@@ -480,30 +480,26 @@ async def _run(args: "YouTubeDownloader") -> None:
         ]
 
         for output_stream_path in output_stream_paths:
-            command.extend(
-                (
-                    "-seekable",
-                    "0",
-                    "-thread_queue_size",
-                    "1024",
-                    "-i",
-                    str(output_stream_path.absolute()),
-                )
+            command += (
+                "-seekable",
+                "0",
+                "-thread_queue_size",
+                "1024",
+                "-i",
+                str(output_stream_path.absolute()),
             )
 
-        command.extend(
-            (
-                "-c",
-                "copy",
-                "-movflags",
-                "faststart",
-                "-fflags",
-                "bitexact",
-            )
+        command += (
+            "-c",
+            "copy",
+            "-movflags",
+            "faststart",
+            "-fflags",
+            "bitexact",
         )
 
         output_mux_file = outdir / f"{manifest_id}.mp4"
-        command.extend((str(output_mux_file.absolute()),))
+        command += (str(output_mux_file.absolute()),)
 
         proc = await asyncio.create_subprocess_exec(program, *command)
         await proc.wait()
