@@ -61,7 +61,7 @@ class YTArchiveMessageHandler(BaseMessageHandler, tag="ytarchive"):
                 self.total_downloaded += msg.fragment_size
                 self.current_manifest = msg.manifest_id
                 self.print_frag_status_update()
-            case msg if isinstance(msg, msgtypes.DownloadJobEndedMessage):
+            case msg if isinstance(msg, msgtypes.DownloadStreamJobEndedMessage):
                 print()
                 print(f"Download job finished for type {msg.media_type}")
             case msg if isinstance(msg, msgtypes.StreamInfoMessage):

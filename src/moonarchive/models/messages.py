@@ -44,5 +44,5 @@ class ExtractingPlayerResponseMessage(BaseMessage, tag="extracting-player-respon
     http_error_code: int
 
 
-class DownloadJobEndedMessage(BaseMessage, tag="download-job-ended"):
+class DownloadStreamJobEndedMessage(BaseMessage, tag="download-stream-ended"):
     media_type: str
