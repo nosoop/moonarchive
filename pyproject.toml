@@ -30,6 +30,9 @@ requires = [
     'setuptools',
 ]
 
+[tool.setuptools.package-data]
+"moonarchive" = ["py.typed"]
+
 [tool.ruff]
 line-length = 96
 lint.extend-select = ["ANN001", "ANN201", "ANN202"]
