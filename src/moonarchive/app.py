@@ -33,6 +33,13 @@ def main() -> None:
         default=0,
     )
     parser.add_argument(
+        "--schedule-offset",
+        type=int,
+        help="Number of seconds ahead of the scheduled start time for rechecks "
+        "(e.g. 300 if a given streamer goes online 5 minutes early)",
+        default=0,
+    )
+    parser.add_argument(
         "--write-description",
         action="store_true",
         help="Writes the stream description to a text file",

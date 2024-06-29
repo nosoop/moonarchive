@@ -375,7 +375,7 @@ async def _run(args: "YouTubeDownloader") -> None:
         if timestamp:
             now = datetime.datetime.now(datetime.timezone.utc)
 
-            seconds_remaining = (timestamp - now).total_seconds()
+            seconds_remaining = (timestamp - now).total_seconds() - args.schedule_offset
             status.queue.put_nowait(
                 messages.StringMessage(
                     f"No stream available (scheduled to start in {int(seconds_remaining)}s at {timestamp})"
@@ -520,6 +520,7 @@ class YouTubeDownloader(msgspec.Struct):
     dry_run: bool
     write_description: bool
     write_thumbnail: bool
+    schedule_offset: int
     prioritize_vp9: bool
     list_formats: bool
     ffmpeg_path: pathlib.Path | None
