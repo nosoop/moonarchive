@@ -393,6 +393,13 @@ async def _run(args: "YouTubeDownloader") -> None:
 
         resp = await extract_player_response(args.url, args.cookie_file)
 
+    if args.list_formats:
+        for format in resp.streaming_data.adaptive_formats:
+            format_disp = format
+            format_disp.url = None
+            status.queue.put_nowait(messages.StringMessage(str(format_disp)))
+        return
+
     assert resp.video_details
     video_id = resp.video_details.video_id
 
@@ -514,6 +521,7 @@ class YouTubeDownloader(msgspec.Struct):
     write_description: bool
     write_thumbnail: bool
     prioritize_vp9: bool
+    list_formats: bool
     ffmpeg_path: pathlib.Path | None
     cookie_file: pathlib.Path | None
     handlers: list[BaseMessageHandler] = msgspec.field(default_factory=list)

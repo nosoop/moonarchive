@@ -65,6 +65,11 @@ def main() -> None:
         dest="cookie_file",
         help="Cookies file in Netscape format",
     )
+    parser.add_argument(
+        "--list-formats",
+        action="store_true",
+        help="Provide a list of currently available formats and exit without writing any files",
+    )
 
     args = parser.parse_args()
 
