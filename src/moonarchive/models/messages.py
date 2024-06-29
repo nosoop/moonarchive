@@ -1,6 +1,7 @@
 #!/usr/bin/python3
 
 import datetime
+import pathlib
 
 import msgspec
 
@@ -46,3 +47,12 @@ class ExtractingPlayerResponseMessage(BaseMessage, tag="extracting-player-respon
 
 class DownloadStreamJobEndedMessage(BaseMessage, tag="download-stream-ended"):
     media_type: str
+
+
+class DownloadJobFailedOutputMoveMessage(BaseMessage, tag="download-failed-output"):
+    # mapping between destination and source
+    path_mapping: dict[pathlib.Path, pathlib.Path]
+
+
+class DownloadJobFinishedMessage(BaseMessage, tag="download-finished"):
+    output_paths: list[pathlib.Path]

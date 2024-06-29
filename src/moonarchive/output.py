@@ -82,6 +82,10 @@ class YTArchiveMessageHandler(BaseMessageHandler, tag="ytarchive"):
                 )
             case msg if isinstance(msg, msgtypes.StreamUnavailableMessage):
                 print(f"{msg.status}: {msg.reason}")
+            case msg if isinstance(msg, msgtypes.DownloadJobFailedOutputMoveMessage):
+                print("Failed to move output files to desired destination:")
+                for dest, src in msg.path_mapping.items():
+                    print(f"- '{dest}' (from '{src}')")
             case _:
                 pass
 

@@ -404,7 +404,12 @@ async def _run(args: "YouTubeDownloader") -> None:
     video_id = resp.video_details.video_id
 
     workdir = pathlib.Path(".")
-    outdir = workdir
+    outdir = args.output_directory or pathlib.Path()
+
+    output_basename = resp.video_details.title.translate(sanitize_table)
+
+    # output_paths[dest] = src
+    output_paths = {}
 
     if args.write_description:
         desc_path = workdir / f"{video_id}.description"
@@ -413,6 +418,7 @@ async def _run(args: "YouTubeDownloader") -> None:
             encoding="utf8",
             newline="\n",
         )
+        output_paths[outdir / f"{output_basename}-{video_id}{desc_path.suffix}"] = desc_path
 
     if args.write_thumbnail:
         if resp.microformat and resp.microformat.thumbnails:
@@ -424,6 +430,9 @@ async def _run(args: "YouTubeDownloader") -> None:
             thumb_dest_path = (workdir / video_id).with_suffix(thumbnail_url_path.suffix)
             r = httpx.get(thumbnail_url)
             thumb_dest_path.write_bytes(r.content)
+            output_paths[outdir / f"{output_basename}-{video_id}{thumb_dest_path.suffix}"] = (
+                thumb_dest_path
+            )
 
     manifest_outputs: dict[str, set[pathlib.Path]] = collections.defaultdict(set)
     async with asyncio.TaskGroup() as tg:
@@ -505,12 +514,32 @@ async def _run(args: "YouTubeDownloader") -> None:
             "bitexact",
         )
 
-        output_mux_file = outdir / f"{manifest_id}.mp4"
+        output_mux_file = workdir / f"{manifest_id}.mp4"
         command += (str(output_mux_file.absolute()),)
 
         proc = await asyncio.create_subprocess_exec(program, *command)
         await proc.wait()
 
+        mux_output_name = f"{output_basename}-{manifest_id}.mp4"
+        if len(manifest_outputs) == 1:
+            # unique manifest, so output video ID instead
+            mux_output_name = f"{output_basename}-{video_id}.mp4"
+
+        output_paths[outdir / mux_output_name] = output_mux_file
+
+    try:
+        # bail if we fail to make the directory
+        outdir.mkdir(parents=True, exist_ok=True)
+
+        # move files to their final location
+        # file paths may be too long on some filesystems like zfs, so we process the longest
+        # first then bail if it throws
+        for dest in sorted(output_paths, key=lambda p: len(str(p.resolve())), reverse=True):
+            src = output_paths[dest]
+            await asyncio.to_thread(shutil.move, src, dest)
+        status.queue.put_nowait(messages.DownloadJobFinishedMessage(list(output_paths.keys())))
+    except OSError:
+        status.queue.put_nowait(messages.DownloadJobFailedOutputMoveMessage(output_paths))
     jobs.clear()
 
 
@@ -521,6 +550,7 @@ class YouTubeDownloader(msgspec.Struct):
     write_description: bool
     write_thumbnail: bool
     schedule_offset: int
+    output_directory: pathlib.Path | None
     prioritize_vp9: bool
     list_formats: bool
     ffmpeg_path: pathlib.Path | None
