@@ -557,5 +557,8 @@ class YouTubeDownloader(msgspec.Struct):
     cookie_file: pathlib.Path | None
     handlers: list[BaseMessageHandler] = msgspec.field(default_factory=list)
 
+    async def async_run(self) -> None:
+        await _run(self)
+
     def run(self) -> None:
         asyncio.run(_run(self))
