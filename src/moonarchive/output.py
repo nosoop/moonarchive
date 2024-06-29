@@ -7,14 +7,14 @@ from .models import messages as msgtypes
 
 
 class BaseMessageHandler(msgspec.Struct):
-    def handle_message(self, msg: msgtypes.BaseMessage) -> None:
+    async def handle_message(self, msg: msgtypes.BaseMessage) -> None:
         raise NotImplementedError()
 
 
 class JSONLMessageHandler(BaseMessageHandler, tag="jsonl"):
     # outputs messages as newline-delimited JSON
     # this is intended for applications that read this tool's standard output
-    def handle_message(self, msg: msgtypes.BaseMessage) -> None:
+    async def handle_message(self, msg: msgtypes.BaseMessage) -> None:
         print(msgspec.json.encode(msg).decode("utf8"))
 
 
@@ -48,7 +48,7 @@ class YTArchiveMessageHandler(BaseMessageHandler, tag="ytarchive"):
             flush=True,
         )
 
-    def handle_message(self, msg: msgtypes.BaseMessage) -> None:
+    async def handle_message(self, msg: msgtypes.BaseMessage) -> None:
         match msg:
             case msg if isinstance(msg, msgtypes.StringMessage):
                 print(msg.text)

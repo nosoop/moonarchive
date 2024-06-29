@@ -285,7 +285,7 @@ async def status_handler(
         try:
             message = await asyncio.wait_for(status.queue.get(), timeout=1.0)
             for handler in handlers:
-                handler.handle_message(message)
+                await handler.handle_message(message)
         except TimeoutError:
             pass
 
