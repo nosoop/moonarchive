@@ -22,7 +22,7 @@ from ..models.youtube_player import YTPlayerAdaptiveFormats, YTPlayerMediaType, 
 from ..output import BaseMessageHandler
 
 # table to remove illegal characters on Windows
-# we currently don't use this, but we may optionally match ytarchive file output behavior later
+# we use this to match ytarchive file output behavior
 sanitize_table = str.maketrans({c: "_" for c in r'<>:"/\|?*'})
 
 
@@ -514,6 +514,8 @@ async def _run(args: "YouTubeDownloader") -> None:
             "bitexact",
         )
 
+        # we possibly could just write this to the output directory directly, but it's easier to
+        # do it all in the same pass for the sake of error handling
         output_mux_file = workdir / f"{manifest_id}.mp4"
         command += (str(output_mux_file.absolute()),)
 
