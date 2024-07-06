@@ -203,7 +203,7 @@ async def frag_iterator(
                         f"Empty {selector.major_type} fragment at {cur_seq}; retrying"
                     )
                 )
-                await asyncio.sleep(max(timeout * 5, 20))
+                await asyncio.sleep(min(timeout * 5, 20))
                 continue
 
             info = FragmentInfo(
