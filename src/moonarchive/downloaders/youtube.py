@@ -469,6 +469,7 @@ async def _run(args: "YouTubeDownloader") -> None:
             except Exception as exc:
                 print(type(exc), exc)
 
+    status.queue.put_nowait(messages.StreamMuxMessage(list(manifest_outputs)))
     status.queue.put_nowait(messages.StringMessage(str(manifest_outputs)))
 
     # output a file for each manifest we received fragments for

@@ -49,6 +49,10 @@ class DownloadStreamJobEndedMessage(BaseMessage, tag="download-stream-ended"):
     media_type: str
 
 
+class StreamMuxMessage(BaseMessage, tag="stream-mux"):
+    manifests: list[str]
+
+
 class DownloadJobFailedOutputMoveMessage(BaseMessage, tag="download-failed-output"):
     # mapping between destination and source
     path_mapping: dict[pathlib.Path, pathlib.Path]
