@@ -54,6 +54,11 @@ def main() -> None:
         default=True,
     )
     parser.add_argument(
+        "--staging-directory",
+        type=pathlib.Path,
+        help="Location for intermediary files (created if nonexistent; defaults to working directory)",
+    )
+    parser.add_argument(
         "--output-directory",
         type=pathlib.Path,
         help="Location for outputs (created if nonexistent; defaults to working directory)",

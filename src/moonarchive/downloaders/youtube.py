@@ -403,7 +403,9 @@ async def _run(args: "YouTubeDownloader") -> None:
     assert resp.video_details
     video_id = resp.video_details.video_id
 
-    workdir = pathlib.Path(".")
+    workdir = args.staging_directory or pathlib.Path(".")
+    workdir.mkdir(parents=True, exist_ok=True)
+
     outdir = args.output_directory or pathlib.Path()
 
     output_basename = resp.video_details.title.translate(sanitize_table)
@@ -552,6 +554,7 @@ class YouTubeDownloader(msgspec.Struct):
     write_description: bool
     write_thumbnail: bool
     schedule_offset: int
+    staging_directory: pathlib.Path | None
     output_directory: pathlib.Path | None
     prioritize_vp9: bool
     list_formats: bool
