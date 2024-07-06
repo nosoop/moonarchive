@@ -194,6 +194,18 @@ async def frag_iterator(
             # as opposed to passing the request errors to the downloading task
             buffer = io.BytesIO(fresp.content)
 
+            if buffer.getbuffer().nbytes == 0:
+                # for some reason it's possible for us to get an empty result
+                # retry until we get a non-zero length or an error code (possible end of stream)
+                # there should be no way for us to get a success code and non-zero forever
+                status_queue.put_nowait(
+                    messages.StringMessage(
+                        f"Empty {selector.major_type} fragment at {cur_seq}; retrying"
+                    )
+                )
+                await asyncio.sleep(max(timeout * 5, 20))
+                continue
+
             info = FragmentInfo(
                 cur_seq=cur_seq,
                 max_seq=new_max_seq,
