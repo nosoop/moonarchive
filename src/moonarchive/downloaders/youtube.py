@@ -153,7 +153,7 @@ async def frag_iterator(
 
     # yields fragment information
     # this should refresh the manifest as needed and yield the next available fragment
-    manifest = resp.streaming_data.get_dash_manifest()
+    manifest = await resp.streaming_data.get_dash_manifest()
     if not manifest:
         raise ValueError("Received a response with no DASH manfiest")
 
@@ -231,7 +231,7 @@ async def frag_iterator(
                 # the stream may have finished while we were mid-download, so don't check that here
                 if not resp.streaming_data:
                     return
-                manifest = resp.streaming_data.get_dash_manifest()
+                manifest = await resp.streaming_data.get_dash_manifest()
                 if not manifest:
                     return
             elif exc.response.status_code in (404, 500, 503):
@@ -254,7 +254,7 @@ async def frag_iterator(
                 if not resp.streaming_data.dash_manifest_id:
                     return
 
-                manifest = resp.streaming_data.get_dash_manifest()
+                manifest = await resp.streaming_data.get_dash_manifest()
                 if not manifest:
                     return
 

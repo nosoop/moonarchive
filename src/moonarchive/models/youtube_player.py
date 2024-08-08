@@ -4,8 +4,9 @@ import datetime
 import enum
 import itertools
 import urllib.parse
-import urllib.request
 from typing import NamedTuple, Optional
+
+import httpx
 
 from .dash_manifest import YTDashManifest
 from .youtube import YTJSONStruct
@@ -120,11 +121,12 @@ class YTPlayerStreamingData(YTJSONStruct):
         id_base, *_ = id.partition("~")
         return id_base
 
-    def get_dash_manifest(self) -> YTDashManifest | None:
+    async def get_dash_manifest(self) -> YTDashManifest | None:
         if not self.dash_manifest_url:
             return None
-        with urllib.request.urlopen(self.dash_manifest_url) as resp:
-            return YTDashManifest.from_manifest_text(resp.read().decode("utf8"))
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(self.dash_manifest_url, timeout=5)
+            return YTDashManifest.from_manifest_text(resp.text)
 
 
 class YTPlayerVideoDetails(YTJSONStruct):
