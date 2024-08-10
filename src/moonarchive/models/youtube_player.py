@@ -48,7 +48,7 @@ class YTPlayerMainAppWebResponseContext(YTJSONStruct):
 
 
 class YTPlayerResponseContext(YTJSONStruct):
-    main_app_web_response_context: YTPlayerMainAppWebResponseContext
+    main_app_web_response_context: YTPlayerMainAppWebResponseContext | None = None
 
 
 class YTPlayerPlayabilityStatus(YTJSONStruct):
@@ -188,8 +188,8 @@ class YTPlayerMicroformat(YTJSONStruct):
 
 
 class YTPlayerResponse(YTJSONStruct):
-    response_context: YTPlayerResponseContext
     playability_status: YTPlayerPlayabilityStatus
+    response_context: YTPlayerResponseContext | None = None
 
     # not present on streams that were made private
     video_details: Optional[YTPlayerVideoDetails] = None

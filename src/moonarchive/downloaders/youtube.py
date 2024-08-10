@@ -9,6 +9,7 @@ import io
 import operator
 import pathlib
 import shutil
+import string
 import urllib.parse
 import urllib.request
 from http.cookiejar import MozillaCookieJar
@@ -18,7 +19,12 @@ import httpx
 import msgspec
 
 from ..models import messages as messages
-from ..models.youtube_player import YTPlayerAdaptiveFormats, YTPlayerMediaType, YTPlayerResponse
+from ..models.youtube_player import (
+    YTPlayerAdaptiveFormats,
+    YTPlayerMediaType,
+    YTPlayerResponse,
+    YTPlayerStreamingData,
+)
 from ..output import BaseMessageHandler
 
 # table to remove illegal characters on Windows
@@ -71,6 +77,46 @@ async def extract_player_response(
         if not response_extractor.result:  # type: ignore
             raise ValueError("Could not extract player response")
         return msgspec.json.decode(response_extractor.result, type=YTPlayerResponse)  # type: ignore
+
+
+async def _get_streaming_data_from_android(video_id: str) -> YTPlayerStreamingData | None:
+    # the DASH manifest via web client expires every 30 seconds as of 2024-08-08
+    # so now we masquerade as the android client and extract the manifest there
+    post_data = string.Template("""{
+	'context': {
+		'client': {
+			'clientName': 'ANDROID',
+			'clientVersion': '19.09.37',
+			'hl': 'en'
+		}
+	},
+	'videoId': '${videoid}',
+	'params': 'CgIQBg==',
+	'playbackContext': {
+		'contentPlaybackContext': {
+			'html5Preference': 'HTML5_PREF_WANTS'
+		}
+	},
+	'contentCheckOk': true,
+	'racyCheckOk': true
+}
+	""")
+
+    async with httpx.AsyncClient() as client:
+        headers = {
+            "X-YouTube-Client-Name": "3",
+            "X-YouTube-Client-Version": "19.09.37",
+            "Origin": "https://www.youtube.com",
+            "content-type": "application/json",
+        }
+
+        result = await client.post(
+            "https://www.youtube.com/youtubei/v1/player?key=AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8",
+            content=post_data.substitute(videoid=video_id).encode("utf8"),
+            headers=headers,
+        )
+        response = msgspec.json.decode(result.text, type=YTPlayerResponse)  # type: ignore
+        return response.streaming_data
 
 
 def _cookies_from_filepath(cookie_file: pathlib.Path | None) -> httpx.Cookies:
@@ -153,21 +199,25 @@ async def frag_iterator(
 
     # yields fragment information
     # this should refresh the manifest as needed and yield the next available fragment
-    manifest = await resp.streaming_data.get_dash_manifest()
+    android_streaming_data = await _get_streaming_data_from_android(resp.video_details.video_id)
+    if not android_streaming_data:
+        raise ValueError("Could not extract unthrottled player response")
+    manifest = await android_streaming_data.get_dash_manifest()
     if not manifest:
         raise ValueError("Received a response with no DASH manfiest")
 
-    selected_format, *_ = selector.select(resp.streaming_data.adaptive_formats)
+    selected_format, *_ = selector.select(android_streaming_data.adaptive_formats)
     itag = selected_format.itag
 
     timeout = selected_format.target_duration_sec
     if not timeout:
         raise ValueError("itag does not have a target duration set")
 
+    video_id = resp.video_details.video_id
     video_url = f"https://youtu.be/{resp.video_details.video_id}"
     cur_seq = 0
 
-    current_manifest_id = resp.streaming_data.dash_manifest_id
+    current_manifest_id = android_streaming_data.dash_manifest_id
     assert current_manifest_id
 
     if selector.major_type == YTPlayerMediaType.VIDEO and selected_format.quality_label:
@@ -216,6 +266,7 @@ async def frag_iterator(
             yield info
             cur_seq += 1
         except httpx.HTTPStatusError as exc:
+            # this desperately needs refactoring...
             status_queue.put_nowait(
                 messages.ExtractingPlayerResponseMessage(itag, exc.response.status_code)
             )
@@ -227,11 +278,15 @@ async def frag_iterator(
             resp = try_resp
 
             if exc.response.status_code == 403:
-                # stream access expired; retrieve a fresh manifest
+                # stream access expired? retrieve a fresh manifest
                 # the stream may have finished while we were mid-download, so don't check that here
+                # FIXME: we need to check playability_status instead of bailing
                 if not resp.streaming_data:
                     return
-                manifest = await resp.streaming_data.get_dash_manifest()
+                android_streaming_data = await _get_streaming_data_from_android(video_id)
+                if not android_streaming_data:
+                    return
+                manifest = await android_streaming_data.get_dash_manifest()
                 if not manifest:
                     return
             elif exc.response.status_code in (404, 500, 503):
@@ -254,19 +309,25 @@ async def frag_iterator(
                 if not resp.streaming_data.dash_manifest_id:
                     return
 
-                manifest = await resp.streaming_data.get_dash_manifest()
+                android_streaming_data = await _get_streaming_data_from_android(video_id)
+                if not android_streaming_data:
+                    return
+                manifest = await android_streaming_data.get_dash_manifest()
                 if not manifest:
                     return
 
-                if current_manifest_id != resp.streaming_data.dash_manifest_id:
+                assert android_streaming_data.dash_manifest_id
+                if current_manifest_id != android_streaming_data.dash_manifest_id:
                     # player response has a different manfifest ID than what we're aware of
                     # reset the sequence counter
                     cur_seq = 0
-                    current_manifest_id = resp.streaming_data.dash_manifest_id
+                    current_manifest_id = android_streaming_data.dash_manifest_id
 
                     # update format to the best available
                     # manifest.format_urls raises a key error
-                    preferred_format, *_ = selector.select(resp.streaming_data.adaptive_formats)
+                    preferred_format, *_ = selector.select(
+                        android_streaming_data.adaptive_formats
+                    )
                     itag = preferred_format.itag
 
                     status_queue.put_nowait(messages.StringMessage(f"{itag=} {timeout=}"))
