@@ -560,12 +560,13 @@ async def _run(args: "YouTubeDownloader") -> None:
             )
             continue
 
-        # raising the log level to 'error' instead of 'warning' suppresses MOOV atom warnings
+        # raising the log level to 'fatal' instead of 'warning' suppresses MOOV atom warnings
+        # and unknown webm:vp9 element errors
         # those warnings being dumped to stdout has a non-negligible performance impact
         program = str(args.ffmpeg_path) if args.ffmpeg_path else "ffmpeg"
         command = [
             "-v",
-            "error",
+            "fatal",
             "-stats",
             "-nostdin",
             "-y",
