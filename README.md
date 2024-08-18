@@ -56,6 +56,8 @@ manager.
 
 - Detection of updated manifests.  See [ytarchive#56][].  tl;dr in certain situations,
 ytarchive will appear to stall if the streamer changes certain settings mid-stream.
+- Handling of landscape-and-portrait transitions.  A streamer may swap width and height &mdash;
+this does not generate a new manifest, and resulting naively muxed files end up being garbage.
 
 Important note on cookie authentication:  YouTube frequently rotates cookies; while a given file
 will work during the start of a stream, you will likely need to re-export the file occasionally.
