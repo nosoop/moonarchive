@@ -87,6 +87,13 @@ def main() -> None:
         action="store_true",
         help="Provide a list of currently available formats and exit without writing any files",
     )
+    parser.add_argument(
+        "-j",
+        "--num-parallel-downloads",
+        type=int,
+        help="Maximum number of requests allowed to be in flight for each stream",
+        default=1,
+    )
 
     args = parser.parse_args()
 

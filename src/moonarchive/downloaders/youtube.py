@@ -197,6 +197,7 @@ async def frag_iterator(
     selector: FormatSelector,
     status_queue: asyncio.Queue,
     cookie_file: pathlib.Path | None,
+    num_parallel_downloads: int = 1,
 ) -> AsyncIterator[FragmentInfo]:
     if not resp.streaming_data or not resp.video_details:
         raise ValueError("Received a non-streamable player response")
@@ -220,6 +221,7 @@ async def frag_iterator(
     video_id = resp.video_details.video_id
     video_url = f"https://youtu.be/{resp.video_details.video_id}"
     cur_seq = 0
+    max_seq = 0
 
     current_manifest_id = android_streaming_data.dash_manifest_id
     assert current_manifest_id
@@ -238,37 +240,56 @@ async def frag_iterator(
         url = manifest.format_urls[itag]
 
         try:
-            # it doesn't look like we need cookies for fetching fragments
-            fresp = await client.get(url.substitute(sequence=cur_seq), timeout=timeout * 2)
-            fresp.raise_for_status()
-
-            new_max_seq = int(fresp.headers.get("X-Head-Seqnum", -1))
-
-            # copying to a buffer here ensures this function handles errors related to the request,
-            # as opposed to passing the request errors to the downloading task
-            buffer = io.BytesIO(fresp.content)
-
-            if buffer.getbuffer().nbytes == 0:
-                # for some reason it's possible for us to get an empty result
-                # retry until we get a non-zero length or an error code (possible end of stream)
-                # there should be no way for us to get a success code and non-zero forever
-                status_queue.put_nowait(
-                    messages.StringMessage(
-                        f"Empty {selector.major_type} fragment at {cur_seq}; retrying"
-                    )
+            # allow for batching requests of fragments if we're behind
+            # if we're caught up this only requests one fragment
+            # if any request fails, the rest of the tasks will be wasted
+            batch_count = max(1, min(max_seq - cur_seq, num_parallel_downloads))
+            reqs = [
+                # it doesn't look like we need cookies for fetching fragments
+                (
+                    s,
+                    asyncio.create_task(
+                        client.get(url.substitute(sequence=s), timeout=timeout * 2)
+                    ),
                 )
-                await asyncio.sleep(min(timeout * 5, 20))
-                continue
+                for s in range(cur_seq, cur_seq + batch_count)
+            ]
+            for req_seq, req_task in reqs:
+                fresp = await req_task
+                fresp.raise_for_status()
 
-            info = FragmentInfo(
-                cur_seq=cur_seq,
-                max_seq=new_max_seq,
-                itag=itag,
-                manifest_id=current_manifest_id,
-                buffer=buffer,
-            )
-            yield info
-            cur_seq += 1
+                new_max_seq = int(fresp.headers.get("X-Head-Seqnum", -1))
+
+                # copying to a buffer here ensures this function handles errors related to the request,
+                # as opposed to passing the request errors to the downloading task
+                buffer = io.BytesIO(fresp.content)
+
+                if buffer.getbuffer().nbytes == 0:
+                    # for some reason it's possible for us to get an empty result
+                    # retry until we get a non-zero length or an error code (possible end of stream)
+                    # there should be no way for us to get a success code and non-zero forever
+
+                    # it looks like we may also hit this case if the live replay is unlisted at the end
+                    status_queue.put_nowait(
+                        messages.StringMessage(
+                            f"Empty {selector.major_type} fragment at {cur_seq}; retrying"
+                        )
+                    )
+                    await asyncio.sleep(min(timeout * 5, 20))
+                    continue
+
+                assert req_seq == cur_seq
+
+                info = FragmentInfo(
+                    cur_seq=cur_seq,
+                    max_seq=new_max_seq,
+                    itag=itag,
+                    manifest_id=current_manifest_id,
+                    buffer=buffer,
+                )
+                yield info
+                max_seq = new_max_seq
+                cur_seq += 1
         except httpx.HTTPStatusError as exc:
             # this desperately needs refactoring...
             status_queue.put_nowait(
@@ -373,6 +394,7 @@ async def stream_downloader(
     output_directory: pathlib.Path,
     status_queue: asyncio.Queue,
     cookie_file: pathlib.Path | None,
+    num_parallel_downloads: int = 1,
 ) -> dict[str, set[pathlib.Path]]:
     # record the manifests and formats we're downloading
     # this is used later to determine which files to mux together
@@ -549,6 +571,7 @@ async def _run(args: "YouTubeDownloader") -> None:
                 workdir,
                 status.queue,
                 args.cookie_file,
+                args.num_parallel_downloads,
             )
         )
         audio_stream_dl = tg.create_task(
@@ -558,6 +581,7 @@ async def _run(args: "YouTubeDownloader") -> None:
                 workdir,
                 status.queue,
                 args.cookie_file,
+                args.num_parallel_downloads,
             )
         )
         for task in asyncio.as_completed((video_stream_dl, audio_stream_dl)):
@@ -665,6 +689,7 @@ class YouTubeDownloader(msgspec.Struct):
     list_formats: bool
     ffmpeg_path: pathlib.Path | None
     cookie_file: pathlib.Path | None
+    num_parallel_downloads: int = 1
     handlers: list[BaseMessageHandler] = msgspec.field(default_factory=list)
 
     async def async_run(self) -> None:
