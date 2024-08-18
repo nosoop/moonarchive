@@ -15,6 +15,7 @@ import urllib.request
 from http.cookiejar import MozillaCookieJar
 from typing import AsyncIterator, Type
 
+import av
 import httpx
 import msgspec
 
@@ -374,8 +375,34 @@ async def stream_downloader(
     # this is used later to determine which files to mux together
     manifest_outputs = collections.defaultdict(set)
 
+    last_manifest_id = None
+    last_frag_dimensions = (0, 0)
+    outnum = 0
+
     async for frag in frag_iterator(resp, selector, status_queue, cookie_file):
         output_prefix = f"{frag.manifest_id}.f{frag.itag}"
+
+        if frag.manifest_id != last_manifest_id:
+            last_manifest_id = frag.manifest_id
+            last_frag_dimensions = (0, 0)
+            outnum = 0
+        if selector.major_type == YTPlayerMediaType.VIDEO:
+            with av.open(frag.buffer, "r") as container:
+                vf = next(container.decode(video=0))
+                assert type(vf) == av.VideoFrame
+
+                current_frag_dimensions = vf.width, vf.height
+                if last_frag_dimensions != current_frag_dimensions:
+                    if last_frag_dimensions != (0, 0):
+                        outnum += 1
+                        status_queue.put_nowait(
+                            messages.StringMessage(
+                                f"Resolution change {last_frag_dimensions} to {current_frag_dimensions}"
+                            )
+                        )
+                    last_frag_dimensions = current_frag_dimensions
+            output_prefix = f"{frag.manifest_id}#{outnum}.f{frag.itag}"
+
         output_stream_path = output_directory / f"{output_prefix}.ts"
 
         # we dump our fragment lengths in case we need to extract the raw segments
