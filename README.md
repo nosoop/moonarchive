@@ -66,8 +66,8 @@ will work during the start of a stream, you will likely need to re-export the fi
 
 ## Contributions
 
-I wrote this tool mainly for myself, so issues / pull requests that are opened will likely be
-ignored as I don't have the capacity to maintain it for other peoples' use cases.  Sorry!
+I designed this tool around my specific needs, so issues / pull requests that are opened may
+be ignored as I don't have the capacity to maintain it for other peoples' use cases.  Sorry!
 
 However, feel free to open both regardless &mdash; issue trackers are meant to serve the
 end users as much as they serve the project owner(s).  Maybe someone else will see them and

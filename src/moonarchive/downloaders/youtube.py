@@ -133,6 +133,9 @@ def _cookies_from_filepath(cookie_file: pathlib.Path | None) -> httpx.Cookies:
 class FormatSelector:
     """
     Class to select a YouTube substream for downloading.
+
+    This is invoked to determine an appropriate format for the user, as the availability of
+    formats may change if the stream broadcasts under a new manifest ID.
     """
 
     major_type: YTPlayerMediaType
@@ -406,10 +409,6 @@ async def stream_downloader(
         output_stream_path = output_directory / f"{output_prefix}.ts"
 
         # we dump our fragment lengths in case we need to extract the raw segments
-        #
-        # this should help in situations where the stream is rotated between portrait and
-        # landscape; that maintains the same manifest, but ffmpeg ends up applying the initial
-        # dimensions for the entire video - that causes a broken image for the rest of the stream
         with output_stream_path.with_suffix(".fragdata.txt").open("ab") as fragdata:
             payload = WrittenFragmentInfo(
                 cur_seq=frag.cur_seq,
@@ -576,6 +575,8 @@ async def _run(args: "YouTubeDownloader") -> None:
     for manifest_id, output_stream_paths in manifest_outputs.items():
         if len(output_stream_paths) != 2:
             # for YouTube, we expect one audio / video stream pair per manifest
+            # we may have multiple video streams per manifest if the resolution changes
+            # we can also handle audio-only flags here
             output_path_names = {p.name for p in output_stream_paths}
             status.queue.put_nowait(
                 messages.StringMessage(
@@ -585,6 +586,8 @@ async def _run(args: "YouTubeDownloader") -> None:
             status.queue.put_nowait(
                 messages.StringMessage("This will need to be manually processed")
             )
+            # TODO: we need to dispatch a message on unsuccessful remuxes so other tools can
+            # handle this case
             continue
 
         # raising the log level to 'fatal' instead of 'warning' suppresses MOOV atom warnings
@@ -618,8 +621,8 @@ async def _run(args: "YouTubeDownloader") -> None:
             "bitexact",
         )
 
-        # we possibly could just write this to the output directory directly, but it's easier to
-        # do it all in the same pass for the sake of error handling
+        # we write this to workdir since ffmpeg will need to do a second pass to move the moov
+        # atom - it's assumed that the output directory will be slower than the workdir
         output_mux_file = workdir / f"{manifest_id}.mp4"
         command += (str(output_mux_file.absolute()),)
 
@@ -628,7 +631,7 @@ async def _run(args: "YouTubeDownloader") -> None:
 
         mux_output_name = f"{output_basename}-{manifest_id}.mp4"
         if len(manifest_outputs) == 1:
-            # unique manifest, so output video ID instead
+            # unique manifest, so output video ID instead (matching ytarchive behavior)
             mux_output_name = f"{output_basename}-{video_id}.mp4"
 
         output_paths[outdir / mux_output_name] = output_mux_file
