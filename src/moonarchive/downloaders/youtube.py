@@ -676,19 +676,19 @@ async def _run(args: "YouTubeDownloader") -> None:
     jobs.clear()
 
 
-class YouTubeDownloader(msgspec.Struct):
+class YouTubeDownloader(msgspec.Struct, kw_only=True):
     url: str
-    poll_interval: int
-    dry_run: bool
     write_description: bool
     write_thumbnail: bool
-    schedule_offset: int
+    prioritize_vp9: bool
     staging_directory: pathlib.Path | None
     output_directory: pathlib.Path | None
-    prioritize_vp9: bool
-    list_formats: bool
-    ffmpeg_path: pathlib.Path | None
-    cookie_file: pathlib.Path | None
+    poll_interval: int = 0
+    schedule_offset: int = 0
+    dry_run: bool = False
+    list_formats: bool = False
+    ffmpeg_path: pathlib.Path | None = None
+    cookie_file: pathlib.Path | None = None
     num_parallel_downloads: int = 1
     handlers: list[BaseMessageHandler] = msgspec.field(default_factory=list)
 
