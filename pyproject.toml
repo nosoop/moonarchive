@@ -1,6 +1,6 @@
 [project]
 name = "moonarchive"
-version = "0.0.1"
+version = "0.1.0"
 
 classifiers = [
     "License :: OSI Approved :: Zero-Clause BSD (0BSD)",
