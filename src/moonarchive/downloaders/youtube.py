@@ -10,6 +10,7 @@ import operator
 import pathlib
 import shutil
 import string
+import sys
 import urllib.parse
 import urllib.request
 from http.cookiejar import MozillaCookieJar
@@ -459,6 +460,15 @@ async def stream_downloader(
 
 
 async def _run(args: "YouTubeDownloader") -> None:
+    # prevent usage if we're running on an event loop that doesn't support the features we need
+    if sys.platform == "win32" and isinstance(
+        asyncio.get_event_loop(), asyncio.SelectorEventLoop
+    ):
+        raise RuntimeError(
+            "Cannot use downloader with SelectorEventLoop as the "
+            "running event loop on Windows as it does not support subprocesses"
+        )
+
     # set up output handler
     status = StatusManager()
 
