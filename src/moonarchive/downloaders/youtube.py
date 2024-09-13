@@ -709,13 +709,13 @@ class YouTubeDownloader(msgspec.Struct, kw_only=True):
     staging_directory: pathlib.Path | None
     output_directory: pathlib.Path | None
     poll_interval: int = 0
+    poll_unavailable_interval: int = 0
     schedule_offset: int = 0
     dry_run: bool = False
     list_formats: bool = False
     ffmpeg_path: pathlib.Path | None = None
     cookie_file: pathlib.Path | None = None
     num_parallel_downloads: int = 1
-    poll_unavailable_interval: int = 0
     handlers: list[BaseMessageHandler] = msgspec.field(default_factory=list)
 
     async def async_run(self) -> None:
