@@ -33,6 +33,13 @@ def main() -> None:
         default=0,
     )
     parser.add_argument(
+        "--poll-unavailable-interval",
+        type=int,
+        help="Rechecks the stream at this interval in seconds if it went private "
+        "before going live; 0 to exit instead",
+        default=0,
+    )
+    parser.add_argument(
         "--schedule-offset",
         type=int,
         help="Number of seconds ahead of the scheduled start time for rechecks "

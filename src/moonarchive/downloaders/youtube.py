@@ -499,6 +499,21 @@ async def _run(args: "YouTubeDownloader") -> None:
         return
 
     while not resp.streaming_data:
+        if not resp.microformat or resp.playability_status.status in ("LOGIN_REQUIRED",):
+            # waiting room appears to be unavailable; either recheck or stop
+            status.queue.put_nowait(
+                messages.StreamUnavailableMessage(
+                    resp.playability_status.status, resp.playability_status.reason
+                )
+            )
+
+            if not args.poll_unavailable_interval:
+                return
+            await asyncio.sleep(args.poll_unavailable_interval)
+            resp = await extract_player_response(args.url, args.cookie_file)
+            continue
+
+        # live_broadcast_details may not be available; LOGIN_REQUIRED should catch this
         timestamp = resp.microformat.live_broadcast_details.start_datetime
 
         # post-scheduled recheck interval
@@ -700,6 +715,7 @@ class YouTubeDownloader(msgspec.Struct, kw_only=True):
     ffmpeg_path: pathlib.Path | None = None
     cookie_file: pathlib.Path | None = None
     num_parallel_downloads: int = 1
+    poll_unavailable_interval: int = 0
     handlers: list[BaseMessageHandler] = msgspec.field(default_factory=list)
 
     async def async_run(self) -> None:
