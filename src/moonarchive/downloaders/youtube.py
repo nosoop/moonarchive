@@ -21,6 +21,7 @@ import httpx
 import msgspec
 
 from ..models import messages as messages
+from ..models.ffmpeg import FFMPEGProgress
 from ..models.youtube_player import (
     YTPlayerAdaptiveFormats,
     YTPlayerMediaType,
@@ -647,6 +648,8 @@ async def _run(args: "YouTubeDownloader") -> None:
             "-v",
             "fatal",
             "-stats",
+            "-progress",
+            "-",
             "-nostdin",
             "-y",
         ]
@@ -675,7 +678,21 @@ async def _run(args: "YouTubeDownloader") -> None:
         output_mux_file = workdir / f"{manifest_id}.mp4"
         command += (str(output_mux_file.absolute()),)
 
-        proc = await asyncio.create_subprocess_exec(program, *command)
+        proc = await asyncio.create_subprocess_exec(
+            program,
+            *command,
+            stdout=asyncio.subprocess.PIPE,
+        )
+
+        async for progress in FFMPEGProgress.from_process_stream(proc.stdout):
+            # ffmpeg progress in remux provides bitrate, total size, out_time, speed
+            status.queue.put_nowait(
+                messages.StreamMuxProgressMessage(
+                    manifest_id=manifest_id,
+                    progress=progress,
+                )
+            )
+
         await proc.wait()
 
         mux_output_name = f"{output_basename}-{manifest_id}.mp4"

@@ -5,6 +5,8 @@ import pathlib
 
 import msgspec
 
+from .ffmpeg import FFMPEGProgress
+
 
 class BaseMessage(msgspec.Struct, tag=True):
     pass
@@ -51,6 +53,11 @@ class DownloadStreamJobEndedMessage(BaseMessage, tag="download-stream-ended"):
 
 class StreamMuxMessage(BaseMessage, tag="stream-mux"):
     manifests: list[str]
+
+
+class StreamMuxProgressMessage(BaseMessage, tag="stream-mux-progress"):
+    manifest_id: str
+    progress: FFMPEGProgress
 
 
 class DownloadJobFailedOutputMoveMessage(BaseMessage, tag="download-failed-output"):
