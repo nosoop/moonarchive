@@ -5,6 +5,8 @@ A Python module and tool to download ongoing YouTube streams in its entirety.
 Shout outs to [`ytarchive`][] and [`yt-dlp`][] for their efforts in the space.  They get all the
 credit for documenting the download process; I'm only working to improve parts of that.
 
+Also to [glubsy/livestream_saver][], though I saw that long after the above.
+
 (If I knew Go or was comfortable parsing out yt-dlp's live-from-start logic, I'd be contributing
 changes to those projects instead.)
 
@@ -23,6 +25,7 @@ changes to those projects instead.)
 
 [`ytarchive`]: https://github.com/Kethsar/ytarchive
 [`yt-dlp`]: https://github.com/yt-dlp/yt-dlp
+[glubsy/livestream_saver]: https://github.com/glubsy/livestream_saver
 
 ## Installation
 
