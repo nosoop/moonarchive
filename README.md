@@ -84,5 +84,5 @@ not already working on something similar.
 ## License
 
 All code in this repository is released under the Zero-Clause BSD license.  That said, please
-also review the dependencies to ensure compliance with those libraries as well should you be
+also review the dependencies' licenses to ensure compliance with them as well should you be
 distributing the code.
