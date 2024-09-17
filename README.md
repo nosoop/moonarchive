@@ -34,7 +34,10 @@ environment so the libraries are isolated from the rest of the system.
 
 1. `pip install git+https://github.com/nosoop/moonarchive#egg=moonarchive[keepawake]`
     - Using `[keepawake]` installs an optional library that ensures the system doesn't go into
-    standby while downloading.
+    standby while waiting for the stream and while downloading.  Otherwise, you will need to
+    pass `--no-keep-awake` to the application to acknowledge that possibility.
+    - The keepawake mechanism only applies to the CLI application; if you are calling the API
+    directly you will have to replicate it yourself.
 2. At minimum, `moonarchive ${URL}` on an upcoming or currently live stream to download;
 `moonarchive --help` to view all possible options.
 
