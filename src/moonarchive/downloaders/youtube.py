@@ -587,7 +587,7 @@ async def _run(args: "YouTubeDownloader") -> None:
     async with asyncio.TaskGroup() as tg:
         vidsel = FormatSelector(YTPlayerMediaType.VIDEO)
         if args.prioritize_vp9:
-            vidsel = FormatSelector(YTPlayerMediaType.VIDEO, "vp9")
+            vidsel.codec = "vp9"
 
         # tasks to write streams to file
         video_stream_dl = tg.create_task(
