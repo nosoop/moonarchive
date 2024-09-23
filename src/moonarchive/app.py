@@ -71,6 +71,12 @@ def main() -> None:
         help="Location for outputs (created if nonexistent; defaults to working directory)",
     )
     parser.add_argument(
+        "--max-video-resolution",
+        type=int,
+        default=None,
+        help="Maximum resolution for video streams (best resolution if omitted)",
+    )
+    parser.add_argument(
         "--vp9",
         action=argparse.BooleanOptionalAction,
         dest="prioritize_vp9",

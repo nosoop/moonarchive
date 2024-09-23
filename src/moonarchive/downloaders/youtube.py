@@ -142,9 +142,10 @@ class FormatSelector:
 
     major_type: YTPlayerMediaType
     codec: str | None = None
+    max_video_resolution: int | None = None
 
     def select(self, formats: list[YTPlayerAdaptiveFormats]) -> list[YTPlayerAdaptiveFormats]:
-        out_formats = filter(lambda x: x.media_type.type == self.major_type, formats)
+        out_formats = list(filter(lambda x: x.media_type.type == self.major_type, formats))
 
         sort_key = None
         if self.major_type == YTPlayerMediaType.VIDEO:
@@ -161,6 +162,12 @@ class FormatSelector:
                 # the typing is super clunky and we can't just return comparables, so we simply
                 # disregard this for now
                 sort_key = _sort  # type: ignore
+            if self.max_video_resolution:
+                out_formats = list(
+                    fmt
+                    for fmt in out_formats
+                    if (fmt.resolution and fmt.resolution <= self.max_video_resolution)
+                )
         else:
             sort_key = operator.attrgetter("bitrate")
         return sorted(out_formats, key=sort_key, reverse=True)
@@ -213,7 +220,9 @@ async def frag_iterator(
     if not manifest:
         raise ValueError("Received a response with no DASH manfiest")
 
-    selected_format, *_ = selector.select(android_streaming_data.adaptive_formats)
+    selected_format, *_ = selector.select(android_streaming_data.adaptive_formats) or (None,)
+    if not selected_format:
+        raise ValueError(f"Could not meet criteria format for format selector {selector}")
     itag = selected_format.itag
 
     timeout = selected_format.target_duration_sec
@@ -585,7 +594,9 @@ async def _run(args: "YouTubeDownloader") -> None:
 
     manifest_outputs: dict[str, set[pathlib.Path]] = collections.defaultdict(set)
     async with asyncio.TaskGroup() as tg:
-        vidsel = FormatSelector(YTPlayerMediaType.VIDEO)
+        vidsel = FormatSelector(
+            YTPlayerMediaType.VIDEO, max_video_resolution=args.max_video_resolution
+        )
         if args.prioritize_vp9:
             vidsel.codec = "vp9"
 
@@ -723,6 +734,7 @@ class YouTubeDownloader(msgspec.Struct, kw_only=True):
     write_description: bool
     write_thumbnail: bool
     prioritize_vp9: bool
+    max_video_resolution: int | None = None
     staging_directory: pathlib.Path | None
     output_directory: pathlib.Path | None
     poll_interval: int = 0

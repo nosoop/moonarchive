@@ -93,6 +93,16 @@ class YTPlayerAdaptiveFormats(YTJSONStruct):
             )
         return YTPlayerAdaptiveFormatType(YTPlayerMediaType.from_str(type), subtype, None)
 
+    @property
+    def resolution(self) -> int | None:
+        """
+        Returns a video stream's minimum of its width and height.
+        This should approximately line up with the friendly resolution name (e.g. 1080p, 720p).
+        """
+        if self.width and self.height:
+            return min(self.width, self.height)
+        return None
+
 
 class YTPlayerStreamingData(YTJSONStruct):
     expires_in_seconds: str
