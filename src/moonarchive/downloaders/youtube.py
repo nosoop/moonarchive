@@ -217,6 +217,13 @@ class FormatSelector:
         return _sort
 
 
+class EmptyFragmentException(Exception):
+    # exception indicating that we received a fragment response but it was empty
+    # in this situation we should retry, as we should get a non-empty result next time if the
+    # stream is still running
+    pass
+
+
 class FragmentInfo(msgspec.Struct, kw_only=True):
     cur_seq: int
     max_seq: int
@@ -309,17 +316,13 @@ async def frag_iterator(
 
                 if buffer.getbuffer().nbytes == 0:
                     # for some reason it's possible for us to get an empty result
-                    # retry until we get a non-zero length or an error code (possible end of stream)
-                    # there should be no way for us to get a success code and non-zero forever
+
+                    # this should never happen while there are fragments available ahead of the current one,
+                    # (at the very least I've never seen the assertion trip)
+                    # but break out via exception just so we're assured we don't skip fragments here
 
                     # it looks like we may also hit this case if the live replay is unlisted at the end
-                    status_queue.put_nowait(
-                        messages.StringMessage(
-                            f"Empty {selector.major_type} fragment at {cur_seq}; retrying"
-                        )
-                    )
-                    await asyncio.sleep(min(timeout * 5, 20))
-                    continue
+                    raise EmptyFragmentException
 
                 assert req_seq == cur_seq
 
@@ -341,7 +344,6 @@ async def frag_iterator(
             status_queue.put_nowait(
                 messages.ExtractingPlayerResponseMessage(itag, exc.response.status_code)
             )
-
 
             if exc.response.status_code == 403:
                 # stream access expired? retrieve a fresh manifest
@@ -375,6 +377,14 @@ async def frag_iterator(
                 )
             )
             check_stream_status = True
+        except EmptyFragmentException:
+            status_queue.put_nowait(
+                messages.StringMessage(
+                    f"Empty {selector.major_type} fragment at {cur_seq}; retrying"
+                )
+            )
+            await asyncio.sleep(min(timeout * 5, 20))
+            continue
 
         if check_stream_status:
             # we need this call to be resilient to failures, otherwise we may have an incomplete download
