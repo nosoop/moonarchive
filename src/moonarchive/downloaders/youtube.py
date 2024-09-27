@@ -13,6 +13,7 @@ import string
 import sys
 import urllib.parse
 import urllib.request
+from contextvars import ContextVar
 from http.cookiejar import MozillaCookieJar
 from typing import AsyncIterator, Type
 
@@ -33,6 +34,10 @@ from ..output import BaseMessageHandler
 # table to remove illegal characters on Windows
 # we use this to match ytarchive file output behavior
 sanitize_table = str.maketrans({c: "_" for c in r'<>:"/\|?*'})
+
+
+# status queue for downloading tasks; this is available in stream_downloader and frag_iterator
+status_queue_ctx: ContextVar[asyncio.Queue] = ContextVar("status_queue")
 
 
 def create_json_object_extractor(decl: str) -> Type[html.parser.HTMLParser]:
@@ -204,7 +209,6 @@ class WrittenFragmentInfo(msgspec.Struct):
 async def frag_iterator(
     resp: YTPlayerResponse,
     selector: FormatSelector,
-    status_queue: asyncio.Queue,
     cookie_file: pathlib.Path | None,
     num_parallel_downloads: int = 1,
 ) -> AsyncIterator[FragmentInfo]:
@@ -236,6 +240,8 @@ async def frag_iterator(
 
     current_manifest_id = android_streaming_data.dash_manifest_id
     assert current_manifest_id
+
+    status_queue = status_queue_ctx.get()
 
     if selector.major_type == YTPlayerMediaType.VIDEO and selected_format.quality_label:
         status_queue.put_nowait(
@@ -404,7 +410,6 @@ async def stream_downloader(
     resp: YTPlayerResponse,
     selector: FormatSelector,
     output_directory: pathlib.Path,
-    status_queue: asyncio.Queue,
     cookie_file: pathlib.Path | None,
     num_parallel_downloads: int = 1,
 ) -> dict[str, set[pathlib.Path]]:
@@ -416,7 +421,9 @@ async def stream_downloader(
     last_frag_dimensions = (0, 0)
     outnum = 0
 
-    async for frag in frag_iterator(resp, selector, status_queue, cookie_file):
+    status_queue = status_queue_ctx.get()
+
+    async for frag in frag_iterator(resp, selector, cookie_file):
         output_prefix = f"{frag.manifest_id}.f{frag.itag}"
 
         if frag.manifest_id != last_manifest_id:
@@ -483,6 +490,7 @@ async def _run(args: "YouTubeDownloader") -> None:
 
     # set up output handler
     status = StatusManager()
+    status_queue_ctx.set(status.queue)
 
     # hold a reference to the output handler so it doesn't get GC'd until we're out of scope
     jobs = {asyncio.create_task(status_handler(args.handlers, status))}  # noqa: F841
@@ -608,7 +616,6 @@ async def _run(args: "YouTubeDownloader") -> None:
                 resp,
                 vidsel,
                 workdir,
-                status.queue,
                 args.cookie_file,
                 args.num_parallel_downloads,
             )
@@ -618,7 +625,6 @@ async def _run(args: "YouTubeDownloader") -> None:
                 resp,
                 FormatSelector(YTPlayerMediaType.AUDIO),
                 workdir,
-                status.queue,
                 args.cookie_file,
                 args.num_parallel_downloads,
             )
