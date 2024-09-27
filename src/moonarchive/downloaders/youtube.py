@@ -334,6 +334,12 @@ async def frag_iterator(
             elif exc.response.status_code in (404, 500, 503):
                 if not resp.microformat or not resp.microformat.live_broadcast_details:
                     # video is private?
+                    status_queue.put_nowait(
+                        messages.StringMessage(
+                            "Microformat or live broadcast details unavailable "
+                            f"for type {selector.major_type}"
+                        )
+                    )
                     return
 
                 # the server has indicated that no fragment is present
@@ -345,6 +351,27 @@ async def frag_iterator(
 
                 if not resp.streaming_data:
                     # stream is offline; sleep and retry previous fragment
+                    if resp.playability_status.status == "LIVE_STREAM_OFFLINE":
+                        # this code path is hit if the streamer is disconnected; retry for frag
+                        pass
+                    if resp.playability_status.status == "UNPLAYABLE":
+                        # this code path may be hit if the streamer opts to unlist the live
+                        # replay once the stream ends:
+                        # resp.playability_status.reason == "This live stream recording is not available."
+
+                        # check resp.microformat.live_broadcast_details.{end_timestamp,is_live_now}
+                        # end_timestamp is probably the best bet here
+
+                        # this code path should also be hit if cookies are expired, in which case we are not logged in
+                        pass
+                    status_queue.put_nowait(
+                        messages.StringMessage(
+                            "No streaming data; status "
+                            f"{resp.playability_status.status}; "
+                            f"live now: {resp.microformat.live_broadcast_details.is_live_now}"
+                        )
+                    )
+
                     await asyncio.sleep(15)
                     continue
 
@@ -353,9 +380,19 @@ async def frag_iterator(
 
                 android_streaming_data = await _get_streaming_data_from_android(video_id)
                 if not android_streaming_data:
+                    status_queue.put_nowait(
+                        messages.StringMessage(
+                            f"No android streaming data for type {selector.major_type}"
+                        )
+                    )
                     return
                 manifest = await android_streaming_data.get_dash_manifest()
                 if not manifest:
+                    status_queue.put_nowait(
+                        messages.StringMessage(
+                            f"No android DASH manifest for type {selector.major_type}"
+                        )
+                    )
                     return
 
                 assert android_streaming_data.dash_manifest_id
