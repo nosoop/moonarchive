@@ -63,6 +63,8 @@ class YTArchiveMessageHandler(BaseMessageHandler, tag="ytarchive"):
                 # it probably diverges at ytarchive@3fb0ba0, which we currently don't implement
                 # (both ffmpeg 5.0 and 7.0 have no fatal issues with such fmp4 files)
                 self.total_downloaded += msg.fragment_size
+                if self.current_manifest != msg.manifest_id:
+                    self.max_seq = 0
                 self.current_manifest = msg.manifest_id
                 self.print_frag_status_update()
             case msg if isinstance(msg, msgtypes.DownloadStreamJobEndedMessage):
