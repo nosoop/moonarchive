@@ -758,6 +758,10 @@ async def _run(args: "YouTubeDownloader") -> None:
 
         output_paths[outdir / mux_output_name] = output_mux_file
 
+    # if we only have one manifest with an unexpected output count, the logs will never be
+    # rendered in the CLI - yield to other tasks here just in case
+    await asyncio.sleep(0)
+
     try:
         # bail if we fail to make the directory
         outdir.mkdir(parents=True, exist_ok=True)
