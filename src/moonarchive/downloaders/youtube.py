@@ -347,7 +347,13 @@ async def frag_iterator(
                 if not resp.microformat.live_broadcast_details.is_live_now and (
                     not resp.video_details or resp.video_details.num_length_seconds
                 ):
-                    return
+                    # we need to handle this differenly during post-live
+                    # the video server may return 503
+                    if exc.response.status_code != 503:
+                        return
+                    elif cur_seq < max_seq - 2:
+                        # post-live, X-Head-Seqnum tends to be two above the true number
+                        pass
 
                 if not resp.streaming_data:
                     # stream is offline; sleep and retry previous fragment
