@@ -331,6 +331,8 @@ async def frag_iterator(
                 yield info
                 max_seq = new_max_seq
                 cur_seq += 1
+            # no download issues, so move on to the next iteration
+            continue
         except httpx.HTTPStatusError as exc:
             # this desperately needs refactoring...
             status_queue.put_nowait(
@@ -445,7 +447,7 @@ async def frag_iterator(
                 await asyncio.sleep(10)
         except (httpx.HTTPError, httpx.StreamError):
             # for everything else we just retry
-            continue
+            pass
 
 
 @dataclasses.dataclass
