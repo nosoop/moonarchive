@@ -74,13 +74,22 @@ async def extract_player_response(
     url: str, cookie_file: pathlib.Path | None
 ) -> YTPlayerResponse:
     response_extractor = PlayerResponseExtractor()
-    transport = httpx.AsyncHTTPTransport(retries=10)
     cookies = _cookies_from_filepath(cookie_file)
-    async with httpx.AsyncClient(
-        transport=transport, follow_redirects=True, cookies=cookies
-    ) as client:
-        r = await client.get(url)
-        response_extractor.feed(r.text)
+    status_queue = status_queue_ctx.get()
+    async with httpx.AsyncClient(follow_redirects=True, cookies=cookies) as client:
+        max_retries = 10
+        for n in range(10):
+            try:
+                r = await client.get(url)
+                response_extractor.feed(r.text)
+                break
+            except httpx.HTTPError:
+                status_queue.put_nowait(
+                    messages.StringMessage(
+                        "Failed to retrieve player response " f"(attempt {n} of {max_retries})"
+                    )
+                )
+                await asyncio.sleep(6)
 
         if not response_extractor.result:  # type: ignore
             raise ValueError("Could not extract player response")
@@ -110,6 +119,7 @@ async def _get_streaming_data_from_android(video_id: str) -> YTPlayerStreamingDa
 }
 	""")
 
+    status_queue = status_queue_ctx.get()
     async with httpx.AsyncClient() as client:
         headers = {
             "X-YouTube-Client-Name": "3",
@@ -118,13 +128,27 @@ async def _get_streaming_data_from_android(video_id: str) -> YTPlayerStreamingDa
             "content-type": "application/json",
         }
 
-        result = await client.post(
-            "https://www.youtube.com/youtubei/v1/player?key=AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8",
-            content=post_data.substitute(videoid=video_id).encode("utf8"),
-            headers=headers,
-        )
-        response = msgspec.json.decode(result.text, type=YTPlayerResponse)  # type: ignore
-        return response.streaming_data
+        max_retries = 10
+        for n in range(max_retries):
+            try:
+                result = await client.post(
+                    "https://www.youtube.com/youtubei/v1/player?key=AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8",
+                    content=post_data.substitute(videoid=video_id).encode("utf8"),
+                    headers=headers,
+                )
+                result.raise_for_status()
+                response = msgspec.json.decode(result.text, type=YTPlayerResponse)  # type: ignore
+                if response.streaming_data:
+                    return response.streaming_data
+            except httpx.HTTPStatusError:
+                status_queue.put_nowait(
+                    messages.StringMessage(
+                        "Failed to retrieve Android streaming data "
+                        f"(attempt {n} of {max_retries})"
+                    )
+                )
+            await asyncio.sleep(5)
+        return None
 
 
 def _cookies_from_filepath(cookie_file: pathlib.Path | None) -> httpx.Cookies:
