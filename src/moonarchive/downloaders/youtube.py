@@ -357,6 +357,7 @@ async def frag_iterator(
                     # player response has a different manfifest ID than what we're aware of
                     # reset the sequence counter
                     cur_seq = 0
+                    max_seq = 0
                     current_manifest_id = android_streaming_data.dash_manifest_id
 
                     # update format to the best available
