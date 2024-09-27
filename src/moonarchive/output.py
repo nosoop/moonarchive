@@ -58,6 +58,10 @@ class YTArchiveMessageHandler(BaseMessageHandler, tag="ytarchive"):
                     self.audio_seq = msg.current_fragment
                 elif msg.media_type == "video":
                     self.video_seq = msg.current_fragment
+
+                # this size matches ytarchive@1790a76 (0.4.0)
+                # it probably diverges at ytarchive@3fb0ba0, which we currently don't implement
+                # (both ffmpeg 5.0 and 7.0 have no fatal issues with such fmp4 files)
                 self.total_downloaded += msg.fragment_size
                 self.current_manifest = msg.manifest_id
                 self.print_frag_status_update()

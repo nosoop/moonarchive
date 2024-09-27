@@ -424,6 +424,7 @@ async def stream_downloader(
             last_frag_dimensions = (0, 0)
             outnum = 0
         if selector.major_type == YTPlayerMediaType.VIDEO:
+            # analyze fragment for dimension change mid-manifest
             with av.open(frag.buffer, "r") as container:
                 vf = next(container.decode(video=0))
                 assert type(vf) == av.VideoFrame
