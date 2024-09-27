@@ -426,28 +426,27 @@ async def frag_iterator(
                         )
                     )
                     return
-
-                assert android_streaming_data.dash_manifest_id
-                if current_manifest_id != android_streaming_data.dash_manifest_id:
-                    # player response has a different manfifest ID than what we're aware of
-                    # reset the sequence counter
-                    cur_seq = 0
-                    max_seq = 0
-                    current_manifest_id = android_streaming_data.dash_manifest_id
-
-                    # update format to the best available
-                    # manifest.format_urls raises a key error
-                    preferred_format, *_ = selector.select(
-                        android_streaming_data.adaptive_formats
-                    )
-                    itag = preferred_format.itag
-
-                    status_queue.put_nowait(messages.StringMessage(f"{itag=} {timeout=}"))
             elif exc.response.status_code == 401:
                 await asyncio.sleep(10)
+                continue
         except (httpx.HTTPError, httpx.StreamError):
             # for everything else we just retry
-            pass
+            continue
+
+        assert android_streaming_data.dash_manifest_id
+        if current_manifest_id != android_streaming_data.dash_manifest_id:
+            # player response has a different manfifest ID than what we're aware of
+            # reset the sequence counter
+            cur_seq = 0
+            max_seq = 0
+            current_manifest_id = android_streaming_data.dash_manifest_id
+
+            # update format to the best available
+            # manifest.format_urls raises a key error
+            preferred_format, *_ = selector.select(android_streaming_data.adaptive_formats)
+            itag = preferred_format.itag
+
+            status_queue.put_nowait(messages.StringMessage(f"{itag=} {timeout=}"))
 
 
 @dataclasses.dataclass
