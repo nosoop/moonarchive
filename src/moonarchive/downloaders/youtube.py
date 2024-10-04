@@ -40,6 +40,10 @@ sanitize_table = str.maketrans({c: "_" for c in r'<>:"/\|?*'})
 status_queue_ctx: ContextVar[asyncio.Queue] = ContextVar("status_queue")
 
 
+# number of downloads allowed for a substream
+num_parallel_downloads_ctx: ContextVar[int] = ContextVar("num_parallel_downloads")
+
+
 def create_json_object_extractor(decl: str) -> Type[html.parser.HTMLParser]:
     class InternalHTMLParser(html.parser.HTMLParser):
         in_script: bool = False
@@ -241,7 +245,6 @@ async def frag_iterator(
     resp: YTPlayerResponse,
     selector: FormatSelector,
     cookie_file: pathlib.Path | None,
-    num_parallel_downloads: int = 1,
 ) -> AsyncIterator[FragmentInfo]:
     if not resp.streaming_data or not resp.video_details:
         raise ValueError("Received a non-streamable player response")
@@ -289,6 +292,8 @@ async def frag_iterator(
     client = httpx.AsyncClient(follow_redirects=True)
 
     check_stream_status = False
+
+    num_parallel_downloads = num_parallel_downloads_ctx.get()
 
     while True:
         url = manifest.format_urls[itag]
@@ -516,7 +521,6 @@ async def stream_downloader(
     selector: FormatSelector,
     output_directory: pathlib.Path,
     cookie_file: pathlib.Path | None,
-    num_parallel_downloads: int = 1,
 ) -> dict[str, set[pathlib.Path]]:
     # record the manifests and formats we're downloading
     # this is used later to determine which files to mux together
@@ -596,6 +600,8 @@ async def _run(args: "YouTubeDownloader") -> None:
     # set up output handler
     status = StatusManager()
     status_queue_ctx.set(status.queue)
+
+    num_parallel_downloads_ctx.set(args.num_parallel_downloads)
 
     # hold a reference to the output handler so it doesn't get GC'd until we're out of scope
     jobs = {asyncio.create_task(status_handler(args.handlers, status))}  # noqa: F841
@@ -722,7 +728,6 @@ async def _run(args: "YouTubeDownloader") -> None:
                 vidsel,
                 workdir,
                 args.cookie_file,
-                args.num_parallel_downloads,
             )
         )
         audio_stream_dl = tg.create_task(
@@ -731,7 +736,6 @@ async def _run(args: "YouTubeDownloader") -> None:
                 FormatSelector(YTPlayerMediaType.AUDIO),
                 workdir,
                 args.cookie_file,
-                args.num_parallel_downloads,
             )
         )
         for task in asyncio.as_completed((video_stream_dl, audio_stream_dl)):
