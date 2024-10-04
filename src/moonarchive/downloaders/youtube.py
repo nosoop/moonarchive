@@ -280,7 +280,11 @@ async def frag_iterator(
                 selected_format.quality_label, selected_format.media_type.codec
             )
         )
-    status_queue.put_nowait(messages.StringMessage(f"{itag=} {timeout=}"))
+    status_queue.put_nowait(
+        messages.FormatSelectionMessage(
+            current_manifest_id, selector.major_type, selected_format
+        )
+    )
 
     client = httpx.AsyncClient(follow_redirects=True)
 
@@ -475,7 +479,11 @@ async def frag_iterator(
             preferred_format, *_ = selector.select(android_streaming_data.adaptive_formats)
             itag = preferred_format.itag
 
-            status_queue.put_nowait(messages.StringMessage(f"{itag=} {timeout=}"))
+            status_queue.put_nowait(
+                messages.FormatSelectionMessage(
+                    current_manifest_id, selector.major_type, preferred_format
+                )
+            )
 
 
 @dataclasses.dataclass
