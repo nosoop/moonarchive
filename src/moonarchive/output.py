@@ -4,6 +4,7 @@ import colorama.ansi
 import msgspec
 
 from .models import messages as msgtypes
+from .models.youtube_player import YTPlayerMediaType
 
 
 class BaseMessageHandler(msgspec.Struct):
@@ -74,14 +75,28 @@ class YTArchiveMessageHandler(BaseMessageHandler, tag="ytarchive"):
                 print(f"Channel: {msg.channel_name}")
                 print(f"Video Title: {msg.video_title}")
                 print(f"Stream starts at {msg.start_datetime}")
-            case msg if isinstance(msg, msgtypes.StreamVideoFormatMessage):
-                if not msg.codec:
-                    print(f"Selected quality: {msg.quality_label} (unknown codec?)")
-                else:
-                    display_media_type = msg.codec
-                    if msg.codec.startswith("avc1"):
+            case msg if isinstance(msg, msgtypes.FormatSelectionMessage):
+                major_type_str = str(msg.major_type).capitalize()
+                display_media_type = msg.format.media_type.codec_primary or "unknown codec"
+                if msg.major_type == YTPlayerMediaType.VIDEO:
+                    if display_media_type.startswith("avc1"):
                         display_media_type = "h264"
-                    print(f"Selected quality: {msg.quality_label} ({display_media_type})")
+                    print(
+                        f"{major_type_str} format: {msg.format.quality_label} "
+                        f"{display_media_type} (itag {msg.format.itag}, manifest "
+                        f"{msg.manifest_id}, duration {msg.format.target_duration_sec})"
+                    )
+                elif msg.format.bitrate:
+                    print(
+                        f"{major_type_str} format: {msg.format.bitrate // 1000}k "
+                        f"{display_media_type} (itag {msg.format.itag}, manifest "
+                        f"{msg.manifest_id}, duration {msg.format.target_duration_sec})"
+                    )
+                else:
+                    print(
+                        f"{major_type_str} format selected (manifest "
+                        f"{msg.manifest_id}, duration {msg.format.target_duration_sec})"
+                    )
             case msg if isinstance(msg, msgtypes.ExtractingPlayerResponseMessage):
                 print(
                     f"Extracting player response for itag {msg.itag}; segment error {msg.http_error_code}"
