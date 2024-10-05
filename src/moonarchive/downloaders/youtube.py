@@ -412,6 +412,8 @@ async def frag_iterator(
                 )
                 return
 
+            probably_caught_up = cur_seq > 0 and cur_seq >= max_seq - 3
+
             # the server has indicated that no fragment is present
             # we're done if the stream is no longer live and a duration is rendered
             if not resp.microformat.live_broadcast_details.is_live_now and (
@@ -419,7 +421,7 @@ async def frag_iterator(
             ):
                 # we need to handle this differenly during post-live
                 # the video server may return 503
-                if cur_seq < max_seq - 2:
+                if not probably_caught_up:
                     # post-live, X-Head-Seqnum tends to be two above the true number
                     pass
                 else:
@@ -431,14 +433,17 @@ async def frag_iterator(
                     # this code path is hit if the streamer is disconnected; retry for frag
                     pass
                 if resp.playability_status.status == "UNPLAYABLE":
-                    # this code path may be hit if the streamer opts to unlist the live
-                    # replay once the stream ends:
-                    # resp.playability_status.reason == "This live stream recording is not available."
-
-                    # check resp.microformat.live_broadcast_details.{end_timestamp,is_live_now}
-                    # end_timestamp is probably the best bet here
+                    # either member stream, possibly unlisted, or beyond the 12h limit
+                    #   reason == "This live stream recording is not available."
+                    #   reason == "This video is available to this channel's members on level..."
 
                     # this code path should also be hit if cookies are expired, in which case we are not logged in
+                    # TODO: properly recheck stream while authz'd
+                    if (
+                        probably_caught_up
+                        and not resp.microformat.live_broadcast_details.is_live_now
+                    ):
+                        return
                     pass
                 status_queue.put_nowait(
                     messages.StringMessage(
