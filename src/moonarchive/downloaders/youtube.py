@@ -476,6 +476,24 @@ async def frag_iterator(
                 )
                 return
 
+        # it is actually possible for a format to disappear from an updated manifest without
+        # incrementing the ID - likely to be inconsistencies between servers
+        if (
+            itag not in manifest.format_urls
+            and current_manifest_id == android_streaming_data.dash_manifest_id
+        ):
+            # select a new format
+            # IMPORTANT: we don't reset the fragment counter here to minimize the chance of the
+            # stream going unavailable mid-download
+            preferred_format, *_ = selector.select(android_streaming_data.adaptive_formats)
+            itag = preferred_format.itag
+
+            status_queue.put_nowait(
+                messages.FormatSelectionMessage(
+                    current_manifest_id, selector.major_type, preferred_format
+                )
+            )
+
         assert android_streaming_data.dash_manifest_id
         if current_manifest_id != android_streaming_data.dash_manifest_id:
             # player response has a different manfifest ID than what we're aware of
