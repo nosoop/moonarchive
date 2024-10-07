@@ -292,6 +292,7 @@ async def frag_iterator(
     client = httpx.AsyncClient(follow_redirects=True)
 
     check_stream_status = False
+    fragment_timeout_retries = 0
 
     num_parallel_downloads = num_parallel_downloads_ctx.get()
 
@@ -347,6 +348,7 @@ async def frag_iterator(
                 cur_seq += 1
             # no download issues, so move on to the next iteration
             check_stream_status = False
+            fragment_timeout_retries = 0
             continue
         except httpx.HTTPStatusError as exc:
             # this desperately needs refactoring...
@@ -379,6 +381,9 @@ async def frag_iterator(
                     f"Fragment retrieval for type {selector.major_type} timed out: {cur_seq} of {max_seq}"
                 )
             )
+            fragment_timeout_retries += 1
+            if fragment_timeout_retries < 5:
+                continue
             check_stream_status = True
         except (httpx.HTTPError, httpx.StreamError) as exc:
             # for everything else we just retry
