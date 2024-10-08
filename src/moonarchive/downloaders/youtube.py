@@ -217,6 +217,13 @@ class FormatSelector:
         return _sort
 
 
+class EmptyFragmentException(Exception):
+    # exception indicating that we received a fragment response but it was empty
+    # in this situation we should retry, as we should get a non-empty result next time if the
+    # stream is still running
+    pass
+
+
 class FragmentInfo(msgspec.Struct, kw_only=True):
     cur_seq: int
     max_seq: int
@@ -277,6 +284,8 @@ async def frag_iterator(
 
     client = httpx.AsyncClient(follow_redirects=True)
 
+    check_stream_status = False
+
     while True:
         url = manifest.format_urls[itag]
 
@@ -307,17 +316,13 @@ async def frag_iterator(
 
                 if buffer.getbuffer().nbytes == 0:
                     # for some reason it's possible for us to get an empty result
-                    # retry until we get a non-zero length or an error code (possible end of stream)
-                    # there should be no way for us to get a success code and non-zero forever
+
+                    # this should never happen while there are fragments available ahead of the current one,
+                    # (at the very least I've never seen the assertion trip)
+                    # but break out via exception just so we're assured we don't skip fragments here
 
                     # it looks like we may also hit this case if the live replay is unlisted at the end
-                    status_queue.put_nowait(
-                        messages.StringMessage(
-                            f"Empty {selector.major_type} fragment at {cur_seq}; retrying"
-                        )
-                    )
-                    await asyncio.sleep(min(timeout * 5, 20))
-                    continue
+                    raise EmptyFragmentException
 
                 assert req_seq == cur_seq
 
@@ -331,17 +336,14 @@ async def frag_iterator(
                 yield info
                 max_seq = new_max_seq
                 cur_seq += 1
+            # no download issues, so move on to the next iteration
+            check_stream_status = False
+            continue
         except httpx.HTTPStatusError as exc:
             # this desperately needs refactoring...
             status_queue.put_nowait(
                 messages.ExtractingPlayerResponseMessage(itag, exc.response.status_code)
             )
-
-            # we need this call to be resilient to failures, otherwise we may have an incomplete download
-            try_resp = await extract_player_response(video_url, cookie_file)
-            if not try_resp:
-                continue
-            resp = try_resp
 
             if exc.response.status_code == 403:
                 # stream access expired? retrieve a fresh manifest
@@ -356,96 +358,124 @@ async def frag_iterator(
                 if not manifest:
                     return
             elif exc.response.status_code in (404, 500, 503):
-                if not resp.microformat or not resp.microformat.live_broadcast_details:
-                    # video is private?
-                    status_queue.put_nowait(
-                        messages.StringMessage(
-                            "Microformat or live broadcast details unavailable "
-                            f"for type {selector.major_type}"
-                        )
-                    )
-                    return
-
-                # the server has indicated that no fragment is present
-                # we're done if the stream is no longer live and a duration is rendered
-                if not resp.microformat.live_broadcast_details.is_live_now and (
-                    not resp.video_details or resp.video_details.num_length_seconds
-                ):
-                    # we need to handle this differenly during post-live
-                    # the video server may return 503
-                    if exc.response.status_code != 503:
-                        return
-                    elif cur_seq < max_seq - 2:
-                        # post-live, X-Head-Seqnum tends to be two above the true number
-                        pass
-
-                if not resp.streaming_data:
-                    # stream is offline; sleep and retry previous fragment
-                    if resp.playability_status.status == "LIVE_STREAM_OFFLINE":
-                        # this code path is hit if the streamer is disconnected; retry for frag
-                        pass
-                    if resp.playability_status.status == "UNPLAYABLE":
-                        # this code path may be hit if the streamer opts to unlist the live
-                        # replay once the stream ends:
-                        # resp.playability_status.reason == "This live stream recording is not available."
-
-                        # check resp.microformat.live_broadcast_details.{end_timestamp,is_live_now}
-                        # end_timestamp is probably the best bet here
-
-                        # this code path should also be hit if cookies are expired, in which case we are not logged in
-                        pass
-                    status_queue.put_nowait(
-                        messages.StringMessage(
-                            "No streaming data; status "
-                            f"{resp.playability_status.status}; "
-                            f"live now: {resp.microformat.live_broadcast_details.is_live_now}"
-                        )
-                    )
-
-                    await asyncio.sleep(15)
-                    continue
-
-                if not resp.streaming_data.dash_manifest_id:
-                    return
-
-                android_streaming_data = await _get_streaming_data_from_android(video_id)
-                if not android_streaming_data:
-                    status_queue.put_nowait(
-                        messages.StringMessage(
-                            f"No android streaming data for type {selector.major_type}"
-                        )
-                    )
-                    return
-                manifest = await android_streaming_data.get_dash_manifest()
-                if not manifest:
-                    status_queue.put_nowait(
-                        messages.StringMessage(
-                            f"No android DASH manifest for type {selector.major_type}"
-                        )
-                    )
-                    return
-
-                assert android_streaming_data.dash_manifest_id
-                if current_manifest_id != android_streaming_data.dash_manifest_id:
-                    # player response has a different manfifest ID than what we're aware of
-                    # reset the sequence counter
-                    cur_seq = 0
-                    max_seq = 0
-                    current_manifest_id = android_streaming_data.dash_manifest_id
-
-                    # update format to the best available
-                    # manifest.format_urls raises a key error
-                    preferred_format, *_ = selector.select(
-                        android_streaming_data.adaptive_formats
-                    )
-                    itag = preferred_format.itag
-
-                    status_queue.put_nowait(messages.StringMessage(f"{itag=} {timeout=}"))
+                check_stream_status = True
             elif exc.response.status_code == 401:
                 await asyncio.sleep(10)
-        except (httpx.HTTPError, httpx.StreamError):
+                continue
+        except httpx.TimeoutException:
+            status_queue.put_nowait(
+                messages.StringMessage(
+                    f"Fragment retrieval for type {selector.major_type} timed out: {cur_seq} of {max_seq}"
+                )
+            )
+            check_stream_status = True
+        except (httpx.HTTPError, httpx.StreamError) as exc:
             # for everything else we just retry
+            status_queue.put_nowait(
+                messages.StringMessage(
+                    f"Unhandled httpx exception for type {selector.major_type}: {exc=}"
+                )
+            )
+            check_stream_status = True
+        except EmptyFragmentException:
+            status_queue.put_nowait(
+                messages.StringMessage(
+                    f"Empty {selector.major_type} fragment at {cur_seq}; retrying"
+                )
+            )
+            await asyncio.sleep(min(timeout * 5, 20))
             continue
+
+        if check_stream_status:
+            # we need this call to be resilient to failures, otherwise we may have an incomplete download
+            try_resp = await extract_player_response(video_url, cookie_file)
+            if not try_resp:
+                continue
+            resp = try_resp
+
+            if not resp.microformat or not resp.microformat.live_broadcast_details:
+                # video is private?
+                status_queue.put_nowait(
+                    messages.StringMessage(
+                        "Microformat or live broadcast details unavailable "
+                        f"for type {selector.major_type}"
+                    )
+                )
+                return
+
+            # the server has indicated that no fragment is present
+            # we're done if the stream is no longer live and a duration is rendered
+            if not resp.microformat.live_broadcast_details.is_live_now and (
+                not resp.video_details or resp.video_details.num_length_seconds
+            ):
+                # we need to handle this differenly during post-live
+                # the video server may return 503
+                if cur_seq < max_seq - 2:
+                    # post-live, X-Head-Seqnum tends to be two above the true number
+                    pass
+                else:
+                    return
+
+            if not resp.streaming_data:
+                # stream is offline; sleep and retry previous fragment
+                if resp.playability_status.status == "LIVE_STREAM_OFFLINE":
+                    # this code path is hit if the streamer is disconnected; retry for frag
+                    pass
+                if resp.playability_status.status == "UNPLAYABLE":
+                    # this code path may be hit if the streamer opts to unlist the live
+                    # replay once the stream ends:
+                    # resp.playability_status.reason == "This live stream recording is not available."
+
+                    # check resp.microformat.live_broadcast_details.{end_timestamp,is_live_now}
+                    # end_timestamp is probably the best bet here
+
+                    # this code path should also be hit if cookies are expired, in which case we are not logged in
+                    pass
+                status_queue.put_nowait(
+                    messages.StringMessage(
+                        "No streaming data; status "
+                        f"{resp.playability_status.status}; "
+                        f"live now: {resp.microformat.live_broadcast_details.is_live_now}"
+                    )
+                )
+
+                await asyncio.sleep(15)
+                continue
+
+            if not resp.streaming_data.dash_manifest_id:
+                return
+
+            android_streaming_data = await _get_streaming_data_from_android(video_id)
+            if not android_streaming_data:
+                status_queue.put_nowait(
+                    messages.StringMessage(
+                        f"No android streaming data for type {selector.major_type}"
+                    )
+                )
+                return
+            manifest = await android_streaming_data.get_dash_manifest()
+            if not manifest:
+                status_queue.put_nowait(
+                    messages.StringMessage(
+                        f"No android DASH manifest for type {selector.major_type}"
+                    )
+                )
+                return
+
+        assert android_streaming_data.dash_manifest_id
+        if current_manifest_id != android_streaming_data.dash_manifest_id:
+            # player response has a different manfifest ID than what we're aware of
+            # reset the sequence counter
+            cur_seq = 0
+            max_seq = 0
+            current_manifest_id = android_streaming_data.dash_manifest_id
+
+            # update format to the best available
+            # manifest.format_urls raises a key error
+            preferred_format, *_ = selector.select(android_streaming_data.adaptive_formats)
+            itag = preferred_format.itag
+
+            status_queue.put_nowait(messages.StringMessage(f"{itag=} {timeout=}"))
 
 
 @dataclasses.dataclass
