@@ -296,7 +296,13 @@ async def frag_iterator(
 
     num_parallel_downloads = num_parallel_downloads_ctx.get()
 
+    reqs: list[tuple[int, asyncio.Task]] = []
+
     while True:
+        # clear any outstanding requests from the previous iteration
+        for req_seq, req_task in reqs:
+            req_task.cancel()
+
         url = manifest.format_urls[itag]
 
         try:
