@@ -374,6 +374,17 @@ async def frag_iterator(
             elif exc.response.status_code in (404, 500, 503):
                 check_stream_status = True
             elif exc.response.status_code == 401:
+                status_queue.put_nowait(
+                    messages.StringMessage(f"Received HTTP 401 error {cur_seq=}, retrying")
+                )
+                await asyncio.sleep(10)
+                continue
+            else:
+                status_queue.put_nowait(
+                    messages.StringMessage(
+                        f"Unhandled HTTP code {exc.response.status_code}, retrying"
+                    )
+                )
                 await asyncio.sleep(10)
                 continue
             if check_stream_status:
