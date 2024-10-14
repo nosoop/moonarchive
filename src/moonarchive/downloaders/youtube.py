@@ -357,11 +357,6 @@ async def frag_iterator(
             fragment_timeout_retries = 0
             continue
         except httpx.HTTPStatusError as exc:
-            # this desperately needs refactoring...
-            status_queue.put_nowait(
-                messages.ExtractingPlayerResponseMessage(itag, exc.response.status_code)
-            )
-
             if exc.response.status_code == 403:
                 # stream access expired? retrieve a fresh manifest
                 # the stream may have finished while we were mid-download, so don't check that here
@@ -381,6 +376,10 @@ async def frag_iterator(
             elif exc.response.status_code == 401:
                 await asyncio.sleep(10)
                 continue
+            if check_stream_status:
+                status_queue.put_nowait(
+                    messages.ExtractingPlayerResponseMessage(itag, exc.response.status_code)
+                )
         except httpx.TimeoutException:
             status_queue.put_nowait(
                 messages.StringMessage(
