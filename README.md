@@ -29,8 +29,12 @@ changes to those projects instead.)
 
 ## Installation
 
+### via pip
+
 If you're comfortable with Python, it's probably a good idea to install this in a virtual
 environment so the libraries are isolated from the rest of the system.
+
+If you're not, consider [installing via uv](#via-uv) instead.
 
 1. `pip install git+https://github.com/nosoop/moonarchive#egg=moonarchive[keepawake]`
     - Using `[keepawake]` installs an optional library that ensures the system doesn't go into
@@ -47,6 +51,18 @@ For development:
 for development.
 2. Install [`just`](https://github.com/casey/just).
 3. Make your changes.  Prior to committing, run `just test` and `just format`.
+
+### via uv
+
+[`uv`][] is an alternative package manager for Python.  The benefit of using `uv` is that it'll
+manage isolating the library dependencies for you.
+
+1. [Install `uv`.](https://docs.astral.sh/uv/getting-started/installation/)
+2. `uv tool install git+https://github.com/nosoop/moonarchive#egg=moonarchive[keepawake]`
+3. `moonarchive ${URL}` (you may need to `uv tool update-shell` to update your `PATH`
+environment variable)
+
+[`uv`]: https://docs.astral.sh/uv/
 
 ## Dependencies
 
