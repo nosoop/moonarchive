@@ -2,6 +2,7 @@
 
 import string
 import xml.etree.ElementTree as ElementTree
+from typing import Self
 
 import msgspec
 
@@ -13,9 +14,12 @@ class YTDashManifest(msgspec.Struct):
     format_urls: dict[int, string.Template] = msgspec.field(default_factory=dict)
 
     @classmethod
-    def from_manifest_text(cls, text: str):
+    def from_manifest_text(cls, text: str) -> Self | None:
         # convert manifest XML string to instance of class
-        root = ElementTree.fromstring(text)
+        try:
+            root = ElementTree.fromstring(text)
+        except ElementTree.ParseError:
+            return None
 
         segment_list = root.find(".//{*}Period/{*}SegmentList")
         if segment_list is None:
