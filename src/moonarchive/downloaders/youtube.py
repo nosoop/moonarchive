@@ -13,6 +13,7 @@ import string
 import sys
 import urllib.parse
 import urllib.request
+import xml.etree.ElementTree as ElementTree
 from contextvars import ContextVar
 from http.cookiejar import MozillaCookieJar
 from typing import AsyncIterator, Type
@@ -361,16 +362,19 @@ async def frag_iterator(
                 # stream access expired? retrieve a fresh manifest
                 # the stream may have finished while we were mid-download, so don't check that here
                 # FIXME: we need to check playability_status instead of bailing
-                new_android_streaming_data = await _get_streaming_data_from_android(video_id)
-                if not new_android_streaming_data:
-                    check_stream_status = True
-                else:
-                    android_streaming_data = android_streaming_data
-                    new_manifest = await android_streaming_data.get_dash_manifest()
-                    if not new_manifest:
+                try:
+                    new_android_streaming_data = await _get_streaming_data_from_android(video_id)
+                    if not new_android_streaming_data:
                         check_stream_status = True
                     else:
-                        manifest = new_manifest
+                        android_streaming_data = android_streaming_data
+                        new_manifest = await android_streaming_data.get_dash_manifest()
+                        if not new_manifest:
+                            check_stream_status = True
+                        else:
+                            manifest = new_manifest
+                except ElementTree.ParseError:
+                    check_stream_status = True
             elif exc.response.status_code in (404, 500, 503):
                 check_stream_status = True
             elif exc.response.status_code == 401:
