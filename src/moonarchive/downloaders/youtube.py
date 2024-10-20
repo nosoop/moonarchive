@@ -13,7 +13,6 @@ import string
 import sys
 import urllib.parse
 import urllib.request
-import xml.etree.ElementTree as ElementTree
 from contextvars import ContextVar
 from http.cookiejar import MozillaCookieJar
 from typing import AsyncIterator, Type
