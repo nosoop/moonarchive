@@ -44,6 +44,10 @@ status_queue_ctx: ContextVar[asyncio.Queue] = ContextVar("status_queue")
 num_parallel_downloads_ctx: ContextVar[int] = ContextVar("num_parallel_downloads")
 
 
+# for long running streams, YouTube allows retrieval of fragments from this far back
+NUM_SECS_FRAG_RETENTION = 86_400 * 5
+
+
 def create_json_object_extractor(decl: str) -> Type[html.parser.HTMLParser]:
     class InternalHTMLParser(html.parser.HTMLParser):
         in_script: bool = False
@@ -276,6 +280,14 @@ async def frag_iterator(
     assert current_manifest_id
 
     status_queue = status_queue_ctx.get()
+
+    # there is a limit to the fragments that can be obtained in long-running streams
+    earliest_seq_available = int(manifest.start_number - (NUM_SECS_FRAG_RETENTION // timeout))
+    if earliest_seq_available > cur_seq:
+        cur_seq = earliest_seq_available
+        status_queue.put_nowait(
+            messages.StringMessage(f"Starting from earliest available fragment {cur_seq}.")
+        )
 
     if selector.major_type == YTPlayerMediaType.VIDEO and selected_format.quality_label:
         status_queue.put_nowait(
@@ -521,7 +533,10 @@ async def frag_iterator(
         if current_manifest_id != android_streaming_data.dash_manifest_id:
             # player response has a different manfifest ID than what we're aware of
             # reset the sequence counter
-            cur_seq = 0
+            earliest_seq_available = int(
+                manifest.start_number - (NUM_SECS_FRAG_RETENTION // timeout)
+            )
+            cur_seq = max(0, earliest_seq_available)
             max_seq = 0
             current_manifest_id = android_streaming_data.dash_manifest_id
 
