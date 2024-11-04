@@ -148,7 +148,7 @@ async def _get_streaming_data_from_android(video_id: str) -> YTPlayerStreamingDa
                 response = msgspec.json.decode(result.text, type=YTPlayerResponse)  # type: ignore
                 if response.streaming_data:
                     return response.streaming_data
-            except httpx.HTTPStatusError:
+            except (httpx.HTTPStatusError, httpx.TransportError):
                 status_queue.put_nowait(
                     messages.StringMessage(
                         "Failed to retrieve Android streaming data "
