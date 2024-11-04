@@ -377,7 +377,7 @@ async def frag_iterator(
                 if not new_android_streaming_data:
                     check_stream_status = True
                 else:
-                    android_streaming_data = android_streaming_data
+                    android_streaming_data = new_android_streaming_data
                     new_manifest = await android_streaming_data.get_dash_manifest()
                     if not new_manifest:
                         check_stream_status = True
