@@ -24,6 +24,7 @@ import msgspec
 
 from ..models import messages as messages
 from ..models.ffmpeg import FFMPEGProgress
+from ..models.youtube_config import YTCFG
 from ..models.youtube_player import (
     YTPlayerAdaptiveFormats,
     YTPlayerMediaType,
@@ -45,6 +46,8 @@ po_token_ctx: ContextVar[str | None] = ContextVar("po_token", default=None)
 
 # optional cookie file for making authenticated requests
 cookie_file_ctx: ContextVar[pathlib.Path | None] = ContextVar("cookie_file", default=None)
+
+ytcfg_ctx: ContextVar[YTCFG | None] = ContextVar("ytcfg", default=None)
 
 
 # number of downloads allowed for a substream
@@ -74,15 +77,18 @@ def create_json_object_extractor(decl: str) -> Type[html.parser.HTMLParser]:
             if decl_pos == -1:
                 return
 
+            # we'll just let the decoder throw to determine where the data ends
             start_pos = data[decl_pos:].find("{") + decl_pos
-            end_pos = data[start_pos:].rfind("};") + 1 + start_pos
-
-            self.result = data[start_pos:end_pos]
+            try:
+                self.result = json.loads(data[start_pos:])
+            except json.JSONDecodeError as e:
+                self.result = json.loads(data[start_pos : start_pos + e.pos])
 
     return InternalHTMLParser
 
 
 PlayerResponseExtractor = create_json_object_extractor("var ytInitialPlayerResponse =")
+YTCFGExtractor = create_json_object_extractor('ytcfg.set({"CLIENT')
 
 
 async def extract_player_response(url: str) -> YTPlayerResponse:
@@ -106,7 +112,32 @@ async def extract_player_response(url: str) -> YTPlayerResponse:
 
         if not response_extractor.result:  # type: ignore
             raise ValueError("Could not extract player response")
-        return msgspec.json.decode(response_extractor.result, type=YTPlayerResponse)  # type: ignore
+        return msgspec.convert(response_extractor.result, type=YTPlayerResponse)  # type: ignore
+
+
+async def extract_yt_cfg(url: str) -> YTCFG:
+    # scrapes a page and returns a current YTCFG
+    response_extractor = YTCFGExtractor()
+    cookies = _cookies_from_filepath()
+    status_queue = status_queue_ctx.get()
+    async with httpx.AsyncClient(follow_redirects=True, cookies=cookies) as client:
+        max_retries = 10
+        for n in range(10):
+            try:
+                r = await client.get(url)
+                response_extractor.feed(r.text)
+                break
+            except httpx.HTTPError:
+                status_queue.put_nowait(
+                    messages.StringMessage(
+                        "Failed to retrieve YTCFG response " f"(attempt {n} of {max_retries})"
+                    )
+                )
+                await asyncio.sleep(6)
+
+        if not response_extractor.result:  # type: ignore
+            raise ValueError("Could not extract YTCFG response")
+        return msgspec.convert(response_extractor.result, type=YTCFG)  # type: ignore
 
 
 async def _get_streaming_data_from_android(video_id: str) -> YTPlayerStreamingData | None:
@@ -123,6 +154,11 @@ async def _get_streaming_data_from_android(video_id: str) -> YTPlayerStreamingDa
     if po_token:
         post_dict["serviceIntegrityDimensions"] = {"poToken": po_token}
 
+    ytcfg = ytcfg_ctx.get()
+    if not ytcfg:
+        # we assume a valid ytcfg at this point
+        raise ValueError("No YTCFG available in context")
+
     status_queue = status_queue_ctx.get()
     cookies = _cookies_from_filepath()
     async with httpx.AsyncClient(cookies=cookies) as client:
@@ -133,11 +169,15 @@ async def _get_streaming_data_from_android(video_id: str) -> YTPlayerStreamingDa
             "content-type": "application/json",
         }
 
+        if ytcfg:
+            headers |= ytcfg.to_headers()
+            post_dict["context"]["client"] |= ytcfg.to_post_context()
+
         max_retries = 10
         for n in range(max_retries):
             try:
                 result = await client.post(
-                    "https://www.youtube.com/youtubei/v1/player?innertube_key=AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8",
+                    f"https://www.youtube.com/youtubei/v1/player?key={ytcfg.innertube_api_key}",
                     content=json.dumps(post_dict).encode("utf8"),
                     headers=headers,
                 )
@@ -663,6 +703,7 @@ async def _run(args: "YouTubeDownloader") -> None:
     num_parallel_downloads_ctx.set(args.num_parallel_downloads)
     po_token_ctx.set(args.po_token)
     cookie_file_ctx.set(args.cookie_file)
+    ytcfg_ctx.set(await extract_yt_cfg(args.url))
 
     # hold a reference to the output handler so it doesn't get GC'd until we're out of scope
     jobs = {asyncio.create_task(status_handler(args.handlers, status))}  # noqa: F841
