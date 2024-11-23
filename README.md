@@ -55,7 +55,7 @@ for development.
 ### via uv
 
 [`uv`][] is an alternative package manager for Python.  The benefit of using `uv` is that it'll
-manage isolating the library dependencies for you.
+manage installing Python as needed and isolating the library dependencies for you.
 
 1. [Install `uv`.](https://docs.astral.sh/uv/getting-started/installation/)
 2. `uv tool install git+https://github.com/nosoop/moonarchive#egg=moonarchive[keepawake]`
@@ -66,7 +66,7 @@ environment variable)
 
 ## Dependencies
 
-- Python 3.11 or newer is required.  The installation will bring in a number of other
+- `moonarchive` is tested against Python 3.11.  The installation will bring in a number of other
 third-party packages.
 - [ffmpeg][] is required for creating the final file.  This is not installed automatically.
 On Windows, you can use `winget install ffmpeg`; for other platforms refer to your package
@@ -82,7 +82,8 @@ ytarchive will appear to stall if the streamer changes certain settings mid-stre
 this does not generate a new manifest, and resulting naively muxed files end up being garbage.
 
 Important note on cookie authentication:  YouTube frequently rotates cookies; while a given file
-will work during the start of a stream, you will likely need to re-export the file occasionally.
+will work during the start of a stream, you will need an up-to-date copy whenever a player
+request is made.
 
 [ytarchive#56]: https://github.com/Kethsar/ytarchive/issues/56
 
