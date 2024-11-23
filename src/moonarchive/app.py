@@ -98,7 +98,9 @@ def main() -> None:
     parser.add_argument(
         "--list-formats",
         action="store_true",
-        help="Provide a list of currently available formats and exit without writing any files",
+        help="Provide a list of currently available formats and exit without writing any files "
+        "(note that formats availability may change throughout a broadcast under various "
+        "conditions)",
     )
     parser.add_argument(
         "-j",
