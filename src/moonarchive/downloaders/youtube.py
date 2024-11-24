@@ -414,6 +414,11 @@ async def frag_iterator(
                 # stream access expired? retrieve a fresh manifest
                 # the stream may have finished while we were mid-download, so don't check that here
                 # FIXME: we need to check playability_status instead of bailing
+                status_queue.put_nowait(
+                    messages.StringMessage(
+                        f"Received HTTP 403 error {cur_seq=}, getting updated streaming data"
+                    )
+                )
                 new_android_streaming_data = await _get_streaming_data_from_android(video_id)
                 if not new_android_streaming_data:
                     check_stream_status = True
