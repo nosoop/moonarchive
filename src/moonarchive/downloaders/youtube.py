@@ -40,6 +40,10 @@ sanitize_table = str.maketrans({c: "_" for c in r'<>:"/\|?*'})
 status_queue_ctx: ContextVar[asyncio.Queue] = ContextVar("status_queue")
 
 
+# optional cookie file for making authenticated requests
+cookie_file_ctx: ContextVar[pathlib.Path | None] = ContextVar("cookie_file", default=None)
+
+
 # number of downloads allowed for a substream
 num_parallel_downloads_ctx: ContextVar[int] = ContextVar("num_parallel_downloads")
 
@@ -78,11 +82,9 @@ def create_json_object_extractor(decl: str) -> Type[html.parser.HTMLParser]:
 PlayerResponseExtractor = create_json_object_extractor("var ytInitialPlayerResponse =")
 
 
-async def extract_player_response(
-    url: str, cookie_file: pathlib.Path | None
-) -> YTPlayerResponse:
+async def extract_player_response(url: str) -> YTPlayerResponse:
     response_extractor = PlayerResponseExtractor()
-    cookies = _cookies_from_filepath(cookie_file)
+    cookies = _cookies_from_filepath()
     status_queue = status_queue_ctx.get()
     async with httpx.AsyncClient(follow_redirects=True, cookies=cookies) as client:
         max_retries = 10
@@ -159,10 +161,11 @@ async def _get_streaming_data_from_android(video_id: str) -> YTPlayerStreamingDa
         return None
 
 
-def _cookies_from_filepath(cookie_file: pathlib.Path | None) -> httpx.Cookies:
+def _cookies_from_filepath() -> httpx.Cookies:
     # since sessions refresh frequently, always grab cookies from file so they're
     # updated out-of-band
     jar = MozillaCookieJar()
+    cookie_file = cookie_file_ctx.get()
     if cookie_file and cookie_file.is_file() and cookie_file.exists():
         jar.load(str(cookie_file))
     return httpx.Cookies(jar)
@@ -248,7 +251,6 @@ class WrittenFragmentInfo(msgspec.Struct):
 async def frag_iterator(
     resp: YTPlayerResponse,
     selector: FormatSelector,
-    cookie_file: pathlib.Path | None,
 ) -> AsyncIterator[FragmentInfo]:
     if not resp.streaming_data or not resp.video_details:
         raise ValueError("Received a non-streamable player response")
@@ -432,7 +434,7 @@ async def frag_iterator(
 
         if check_stream_status:
             # we need this call to be resilient to failures, otherwise we may have an incomplete download
-            try_resp = await extract_player_response(video_url, cookie_file)
+            try_resp = await extract_player_response(video_url)
             if not try_resp:
                 continue
             resp = try_resp
@@ -578,10 +580,7 @@ async def status_handler(
 
 
 async def stream_downloader(
-    resp: YTPlayerResponse,
-    selector: FormatSelector,
-    output_directory: pathlib.Path,
-    cookie_file: pathlib.Path | None,
+    resp: YTPlayerResponse, selector: FormatSelector, output_directory: pathlib.Path
 ) -> dict[str, set[pathlib.Path]]:
     # record the manifests and formats we're downloading
     # this is used later to determine which files to mux together
@@ -593,7 +592,7 @@ async def stream_downloader(
 
     status_queue = status_queue_ctx.get()
 
-    async for frag in frag_iterator(resp, selector, cookie_file):
+    async for frag in frag_iterator(resp, selector):
         output_prefix = f"{frag.manifest_id}.f{frag.itag}"
 
         if frag.manifest_id != last_manifest_id:
@@ -663,11 +662,12 @@ async def _run(args: "YouTubeDownloader") -> None:
     status_queue_ctx.set(status.queue)
 
     num_parallel_downloads_ctx.set(args.num_parallel_downloads)
+    cookie_file_ctx.set(args.cookie_file)
 
     # hold a reference to the output handler so it doesn't get GC'd until we're out of scope
     jobs = {asyncio.create_task(status_handler(args.handlers, status))}  # noqa: F841
 
-    resp = await extract_player_response(args.url, args.cookie_file)
+    resp = await extract_player_response(args.url)
 
     if resp.playability_status.status in ("ERROR", "LOGIN_REQUIRED", "UNPLAYABLE"):
         status.queue.put_nowait(
@@ -702,7 +702,7 @@ async def _run(args: "YouTubeDownloader") -> None:
             if not args.poll_unavailable_interval:
                 return
             await asyncio.sleep(args.poll_unavailable_interval)
-            resp = await extract_player_response(args.url, args.cookie_file)
+            resp = await extract_player_response(args.url)
             continue
 
         # live_broadcast_details may not be available; LOGIN_REQUIRED should catch this
@@ -729,7 +729,7 @@ async def _run(args: "YouTubeDownloader") -> None:
 
         await asyncio.sleep(seconds_wait)
 
-        resp = await extract_player_response(args.url, args.cookie_file)
+        resp = await extract_player_response(args.url)
 
     if args.list_formats:
         for format in resp.streaming_data.adaptive_formats:
@@ -783,21 +783,9 @@ async def _run(args: "YouTubeDownloader") -> None:
             vidsel.codec = "vp9"
 
         # tasks to write streams to file
-        video_stream_dl = tg.create_task(
-            stream_downloader(
-                resp,
-                vidsel,
-                workdir,
-                args.cookie_file,
-            )
-        )
+        video_stream_dl = tg.create_task(stream_downloader(resp, vidsel, workdir))
         audio_stream_dl = tg.create_task(
-            stream_downloader(
-                resp,
-                FormatSelector(YTPlayerMediaType.AUDIO),
-                workdir,
-                args.cookie_file,
-            )
+            stream_downloader(resp, FormatSelector(YTPlayerMediaType.AUDIO), workdir)
         )
         for task in asyncio.as_completed((video_stream_dl, audio_stream_dl)):
             try:
