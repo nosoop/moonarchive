@@ -116,6 +116,11 @@ def main() -> None:
         "causing frequent player refreshes and possibly triggering bot detection systems "
         "if multiple instances are running",
     )
+    parser.add_argument(
+        "--visitor-data",
+        type=str,
+        help="Visitor data to be used in place of cookies when not logged in",
+    )
 
     args = parser.parse_args()
 

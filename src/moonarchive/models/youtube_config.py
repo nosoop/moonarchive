@@ -33,7 +33,10 @@ class YTCFG(YTJSONStruct, kw_only=True):
         return headers
 
     def to_post_context(self) -> dict[str, str]:
-        return {
+        post_context = {
             "clientName": self.innertube_client_name,
             "clientVersion": self.innertube_client_version,
         }
+        if self.visitor_data:
+            post_context["visitorData"] = self.visitor_data
+        return post_context
