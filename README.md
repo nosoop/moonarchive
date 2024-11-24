@@ -29,6 +29,14 @@ changes to those projects instead.)
 
 ## Installation
 
+> [!WARNING]
+> As of 2024-11-22 or so, YouTube started denying the Android client from making requests that
+> obtain a DASH manifest.  As a result, `moonarchive` currently only issues requests as the web
+> client.
+> 
+> See the section on [Proof-of-origin downloads](#proof-of-origin-downloads) if you intend to
+> download streams in parallel.
+
 ### via pip
 
 If you're comfortable with Python, it's probably a good idea to install this in a virtual
@@ -85,6 +93,25 @@ Important note on cookie authentication:  YouTube frequently rotates cookies; wh
 will work during the start of a stream, you will likely need to re-export the file occasionally.
 
 [ytarchive#56]: https://github.com/Kethsar/ytarchive/issues/56
+
+### Proof-of-origin downloads
+
+YouTube has started enforcing the use of proof-of-origin to verify that requests are made from a
+real browser environment.
+
+Without it, streams will expire after 30 seconds and `moonarchive` will need to make repeated
+requests for new copies of the manifest.  This behavior, when done at a high enough frequency,
+will trigger YouTube's bot detection, which at minimum will invalidate ongoing downloads.
+
+While `moonarchive` will still work without specifying proof-of-origin for now, if you plan
+on downloading items in parallel it's strongly recommended to [obtain a token][].
+
+Pass one of the following:
+
+- `--po-token ${POTOKEN} --visitor-data ${VISITOR_DATA}` for non-logged in contexts
+- `--po-token ${POTOKEN} --cookies ${COOKIE_FILE}` for logged in contexts (member streams, etc.)
+
+[obtain a token]: https://github.com/yt-dlp/yt-dlp/wiki/Extractors#po-token-guide
 
 ## Contributions
 
