@@ -109,6 +109,13 @@ def main() -> None:
         help="Maximum number of requests allowed to be in flight for each stream",
         default=1,
     )
+    parser.add_argument(
+        "--po-token",
+        type=str,
+        help="Proof of origin token; optional, but prevents fast expirations of streams, "
+        "causing frequent player refreshes and possibly triggering bot detection systems "
+        "if multiple instances are running",
+    )
 
     args = parser.parse_args()
 

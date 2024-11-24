@@ -6,6 +6,7 @@ import dataclasses
 import datetime
 import html.parser
 import io
+import json
 import operator
 import pathlib
 import shutil
@@ -39,6 +40,8 @@ sanitize_table = str.maketrans({c: "_" for c in r'<>:"/\|?*'})
 # status queue for downloading tasks; this is available in stream_downloader and frag_iterator
 status_queue_ctx: ContextVar[asyncio.Queue] = ContextVar("status_queue")
 
+
+po_token_ctx: ContextVar[str | None] = ContextVar("po_token", default=None)
 
 # optional cookie file for making authenticated requests
 cookie_file_ctx: ContextVar[pathlib.Path | None] = ContextVar("cookie_file", default=None)
@@ -109,31 +112,23 @@ async def extract_player_response(url: str) -> YTPlayerResponse:
 async def _get_streaming_data_from_android(video_id: str) -> YTPlayerStreamingData | None:
     # the DASH manifest via web client expires every 30 seconds as of 2024-08-08
     # so now we masquerade as the android client and extract the manifest there
-    post_data = string.Template("""{
-	'context': {
-		'client': {
-			'clientName': 'ANDROID',
-			'clientVersion': '19.09.37',
-			'hl': 'en'
-		}
-	},
-	'videoId': '${videoid}',
-	'params': 'CgIQBg==',
-	'playbackContext': {
-		'contentPlaybackContext': {
-			'html5Preference': 'HTML5_PREF_WANTS'
-		}
-	},
-	'contentCheckOk': true,
-	'racyCheckOk': true
-}
-	""")
+    post_dict: dict = {
+        "context": {
+            "client": {"clientName": "WEB", "clientVersion": "2.20241121.01.00", "hl": "en"}
+        },
+        "playbackContext": {"contentPlaybackContext": {"html5Preference": "HTML5_PREF_WANTS"}},
+    }
+    post_dict["videoId"] = video_id
+    po_token = po_token_ctx.get()
+    if po_token:
+        post_dict["serviceIntegrityDimensions"] = {"poToken": po_token}
 
     status_queue = status_queue_ctx.get()
-    async with httpx.AsyncClient() as client:
+    cookies = _cookies_from_filepath()
+    async with httpx.AsyncClient(cookies=cookies) as client:
         headers = {
-            "X-YouTube-Client-Name": "3",
-            "X-YouTube-Client-Version": "19.09.37",
+            "X-YouTube-Client-Name": "1",
+            "X-YouTube-Client-Version": "2.20241121.01.00",
             "Origin": "https://www.youtube.com",
             "content-type": "application/json",
         }
@@ -142,8 +137,8 @@ async def _get_streaming_data_from_android(video_id: str) -> YTPlayerStreamingDa
         for n in range(max_retries):
             try:
                 result = await client.post(
-                    "https://www.youtube.com/youtubei/v1/player?key=AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8",
-                    content=post_data.substitute(videoid=video_id).encode("utf8"),
+                    "https://www.youtube.com/youtubei/v1/player?innertube_key=AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8",
+                    content=json.dumps(post_dict).encode("utf8"),
                     headers=headers,
                 )
                 result.raise_for_status()
@@ -312,12 +307,16 @@ async def frag_iterator(
 
     reqs: list[tuple[int, asyncio.Task]] = []
 
+    po_token = po_token_ctx.get()
+
     while True:
         # clear any outstanding requests from the previous iteration
         for req_seq, req_task in reqs:
             req_task.cancel()
 
         url = manifest.format_urls[itag]
+        if po_token:
+            url = string.Template(url.template + f"/pot/{po_token}")
 
         try:
             # allow for batching requests of fragments if we're behind
@@ -662,6 +661,7 @@ async def _run(args: "YouTubeDownloader") -> None:
     status_queue_ctx.set(status.queue)
 
     num_parallel_downloads_ctx.set(args.num_parallel_downloads)
+    po_token_ctx.set(args.po_token)
     cookie_file_ctx.set(args.cookie_file)
 
     # hold a reference to the output handler so it doesn't get GC'd until we're out of scope
@@ -915,6 +915,7 @@ class YouTubeDownloader(msgspec.Struct, kw_only=True):
     ffmpeg_path: pathlib.Path | None = None
     cookie_file: pathlib.Path | None = None
     num_parallel_downloads: int = 1
+    po_token: str | None = None
     handlers: list[BaseMessageHandler] = msgspec.field(default_factory=list)
 
     async def async_run(self) -> None:
