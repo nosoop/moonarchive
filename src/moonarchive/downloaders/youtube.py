@@ -43,6 +43,7 @@ status_queue_ctx: ContextVar[asyncio.Queue] = ContextVar("status_queue")
 
 
 po_token_ctx: ContextVar[str | None] = ContextVar("po_token", default=None)
+visitor_data_ctx: ContextVar[str | None] = ContextVar("visitor_data", default=None)
 
 # optional cookie file for making authenticated requests
 cookie_file_ctx: ContextVar[pathlib.Path | None] = ContextVar("cookie_file", default=None)
@@ -158,6 +159,7 @@ async def _get_streaming_data_from_android(video_id: str) -> YTPlayerStreamingDa
     if not ytcfg:
         # we assume a valid ytcfg at this point
         raise ValueError("No YTCFG available in context")
+    visitor_data = visitor_data_ctx.get()
 
     status_queue = status_queue_ctx.get()
     cookies = _cookies_from_filepath()
@@ -169,9 +171,10 @@ async def _get_streaming_data_from_android(video_id: str) -> YTPlayerStreamingDa
             "content-type": "application/json",
         }
 
-        if ytcfg:
-            headers |= ytcfg.to_headers()
-            post_dict["context"]["client"] |= ytcfg.to_post_context()
+        if visitor_data:
+            ytcfg.visitor_data = visitor_data
+        headers |= ytcfg.to_headers()
+        post_dict["context"]["client"] |= ytcfg.to_post_context()
 
         max_retries = 10
         for n in range(max_retries):
@@ -707,6 +710,7 @@ async def _run(args: "YouTubeDownloader") -> None:
 
     num_parallel_downloads_ctx.set(args.num_parallel_downloads)
     po_token_ctx.set(args.po_token)
+    visitor_data_ctx.set(args.visitor_data)
     cookie_file_ctx.set(args.cookie_file)
     ytcfg_ctx.set(await extract_yt_cfg(args.url))
 
@@ -962,6 +966,7 @@ class YouTubeDownloader(msgspec.Struct, kw_only=True):
     cookie_file: pathlib.Path | None = None
     num_parallel_downloads: int = 1
     po_token: str | None = None
+    visitor_data: str | None = None
     handlers: list[BaseMessageHandler] = msgspec.field(default_factory=list)
 
     async def async_run(self) -> None:
