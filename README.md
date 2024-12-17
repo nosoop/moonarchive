@@ -44,7 +44,7 @@ environment so the libraries are isolated from the rest of the system.
 
 If you're not, consider [installing via uv](#via-uv) instead.
 
-1. `pip install git+https://github.com/nosoop/moonarchive#egg=moonarchive[keepawake]`
+1. `pip install "moonarchive[keepawake] @ git+https://github.com/nosoop/moonarchive"`
     - Using `[keepawake]` installs an optional library that ensures the system doesn't go into
     standby while waiting for the stream and while downloading.  Otherwise, you will need to
     pass `--no-keep-awake` to the application to acknowledge that possibility.
@@ -66,7 +66,7 @@ for development.
 manage installing Python as needed and isolating the library dependencies for you.
 
 1. [Install `uv`.](https://docs.astral.sh/uv/getting-started/installation/)
-2. `uv tool install git+https://github.com/nosoop/moonarchive#egg=moonarchive[keepawake]`
+2. `uv tool install "moonarchive[keepawake] @ git+https://github.com/nosoop/moonarchive"`
 3. `moonarchive ${URL}` (you may need to `uv tool update-shell` to update your `PATH`
 environment variable)
 
