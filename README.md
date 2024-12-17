@@ -37,6 +37,10 @@ changes to those projects instead.)
 > See the section on [Proof-of-origin downloads](#proof-of-origin-downloads) if you intend to
 > download streams in parallel.
 
+(Looking for a graphical interface to manage things?  Check out [moombox][].)
+
+[moombox]: https://github.com/nosoop/moombox
+
 ### via pip
 
 If you're comfortable with Python, it's probably a good idea to install this in a virtual
