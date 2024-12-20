@@ -25,12 +25,7 @@ import msgspec
 from ..models import messages as messages
 from ..models.ffmpeg import FFMPEGProgress
 from ..models.youtube_config import YTCFG
-from ..models.youtube_player import (
-    YTPlayerAdaptiveFormats,
-    YTPlayerMediaType,
-    YTPlayerResponse,
-    YTPlayerStreamingData,
-)
+from ..models.youtube_player import YTPlayerAdaptiveFormats, YTPlayerMediaType, YTPlayerResponse
 from ..output import BaseMessageHandler
 
 # table to remove illegal characters on Windows
@@ -141,7 +136,7 @@ async def extract_yt_cfg(url: str) -> YTCFG:
         return msgspec.convert(response_extractor.result, type=YTCFG)  # type: ignore
 
 
-async def _get_streaming_data_from_android(video_id: str) -> YTPlayerStreamingData | None:
+async def _get_web_player_response(video_id: str) -> YTPlayerResponse | None:
     # the DASH manifest via web client expires every 30 seconds as of 2024-08-08
     # so now we masquerade as the android client and extract the manifest there
     post_dict: dict = {
@@ -185,13 +180,11 @@ async def _get_streaming_data_from_android(video_id: str) -> YTPlayerStreamingDa
                     headers=headers,
                 )
                 result.raise_for_status()
-                response = msgspec.json.decode(result.text, type=YTPlayerResponse)  # type: ignore
-                if response.streaming_data:
-                    return response.streaming_data
+                return msgspec.json.decode(result.text, type=YTPlayerResponse)  # type: ignore
             except (httpx.HTTPStatusError, httpx.TransportError):
                 status_queue.put_nowait(
                     messages.StringMessage(
-                        "Failed to retrieve Android streaming data "
+                        "Failed to retrieve web player response "
                         f"(attempt {n} of {max_retries})"
                     )
                 )
@@ -290,19 +283,25 @@ async def frag_iterator(
     resp: YTPlayerResponse,
     selector: FormatSelector,
 ) -> AsyncIterator[FragmentInfo]:
+    # yields fragment information
+    # this should refresh the manifest as needed and yield the next available fragment
+
+    assert resp.video_details
+    video_id = resp.video_details.video_id
+
+    # fetch a response made with our visitor ID
+    try_resp = await _get_web_player_response(video_id)
+    if not try_resp:
+        raise ValueError("Failed to retrieve a web player response")
+    resp = try_resp
     if not resp.streaming_data or not resp.video_details:
         raise ValueError("Received a non-streamable player response")
 
-    # yields fragment information
-    # this should refresh the manifest as needed and yield the next available fragment
-    android_streaming_data = await _get_streaming_data_from_android(resp.video_details.video_id)
-    if not android_streaming_data:
-        raise ValueError("Could not extract unthrottled player response")
-    manifest = await android_streaming_data.get_dash_manifest()
+    manifest = await resp.streaming_data.get_dash_manifest()
     if not manifest:
-        raise ValueError("Received a response with no DASH manfiest")
+        raise ValueError("Received a response with no DASH manifest")
 
-    selected_format, *_ = selector.select(android_streaming_data.adaptive_formats) or (None,)
+    selected_format, *_ = selector.select(resp.streaming_data.adaptive_formats) or (None,)
     if not selected_format:
         raise ValueError(f"Could not meet criteria format for format selector {selector}")
     itag = selected_format.itag
@@ -311,12 +310,10 @@ async def frag_iterator(
     if not timeout:
         raise ValueError("itag does not have a target duration set")
 
-    video_id = resp.video_details.video_id
-    video_url = f"https://youtu.be/{resp.video_details.video_id}"
     cur_seq = 0
     max_seq = 0
 
-    current_manifest_id = android_streaming_data.dash_manifest_id
+    current_manifest_id = resp.streaming_data.dash_manifest_id
     assert current_manifest_id
 
     status_queue = status_queue_ctx.get()
@@ -419,19 +416,10 @@ async def frag_iterator(
                 # FIXME: we need to check playability_status instead of bailing
                 status_queue.put_nowait(
                     messages.StringMessage(
-                        f"Received HTTP 403 error {cur_seq=}, getting updated streaming data"
+                        f"Received HTTP 403 error {cur_seq=}, getting new player response"
                     )
                 )
-                new_android_streaming_data = await _get_streaming_data_from_android(video_id)
-                if not new_android_streaming_data:
-                    check_stream_status = True
-                else:
-                    android_streaming_data = new_android_streaming_data
-                    new_manifest = await android_streaming_data.get_dash_manifest()
-                    if not new_manifest:
-                        check_stream_status = True
-                    else:
-                        manifest = new_manifest
+                check_stream_status = True
             elif exc.response.status_code in (404, 500, 503):
                 check_stream_status = True
             elif exc.response.status_code == 401:
@@ -481,7 +469,7 @@ async def frag_iterator(
 
         if check_stream_status:
             # we need this call to be resilient to failures, otherwise we may have an incomplete download
-            try_resp = await extract_player_response(video_url)
+            try_resp = await _get_web_player_response(video_id)
             if not try_resp:
                 continue
             resp = try_resp
@@ -496,6 +484,8 @@ async def frag_iterator(
                 )
                 return
 
+            # if the broadcast has ended YouTube will increment the max sequence number by 2
+            # without any fragments being present there
             probably_caught_up = cur_seq > 0 and cur_seq >= max_seq - 3
 
             # the server has indicated that no fragment is present
@@ -542,34 +532,25 @@ async def frag_iterator(
 
             if not resp.streaming_data.dash_manifest_id:
                 return
-
-            android_streaming_data = await _get_streaming_data_from_android(video_id)
-            if not android_streaming_data:
-                status_queue.put_nowait(
-                    messages.StringMessage(
-                        f"No android streaming data for type {selector.major_type}"
-                    )
-                )
-                return
-            manifest = await android_streaming_data.get_dash_manifest()
+            manifest = await resp.streaming_data.get_dash_manifest()
             if not manifest:
                 status_queue.put_nowait(
-                    messages.StringMessage(
-                        f"No android DASH manifest for type {selector.major_type}"
-                    )
+                    messages.StringMessage("Failed to retrieve DASH manifest")
                 )
                 return
 
+        assert resp.streaming_data
         # it is actually possible for a format to disappear from an updated manifest without
         # incrementing the ID - likely to be inconsistencies between servers
+        # this may only apply to the android response
         if (
             itag not in manifest.format_urls
-            and current_manifest_id == android_streaming_data.dash_manifest_id
+            and current_manifest_id == resp.streaming_data.dash_manifest_id
         ):
             # select a new format
             # IMPORTANT: we don't reset the fragment counter here to minimize the chance of the
             # stream going unavailable mid-download
-            preferred_format, *_ = selector.select(android_streaming_data.adaptive_formats)
+            preferred_format, *_ = selector.select(resp.streaming_data.adaptive_formats)
             itag = preferred_format.itag
 
             status_queue.put_nowait(
@@ -578,8 +559,8 @@ async def frag_iterator(
                 )
             )
 
-        assert android_streaming_data.dash_manifest_id
-        if current_manifest_id != android_streaming_data.dash_manifest_id:
+        assert resp.streaming_data.dash_manifest_id
+        if current_manifest_id != resp.streaming_data.dash_manifest_id:
             # player response has a different manfifest ID than what we're aware of
             # reset the sequence counter
             earliest_seq_available = int(
@@ -587,11 +568,11 @@ async def frag_iterator(
             )
             cur_seq = max(0, earliest_seq_available)
             max_seq = 0
-            current_manifest_id = android_streaming_data.dash_manifest_id
+            current_manifest_id = resp.streaming_data.dash_manifest_id
 
             # update format to the best available
             # manifest.format_urls raises a key error
-            preferred_format, *_ = selector.select(android_streaming_data.adaptive_formats)
+            preferred_format, *_ = selector.select(resp.streaming_data.adaptive_formats)
             itag = preferred_format.itag
 
             status_queue.put_nowait(
