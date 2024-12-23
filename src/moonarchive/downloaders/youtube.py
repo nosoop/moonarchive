@@ -367,6 +367,7 @@ async def frag_iterator(
 
     check_stream_status = False
     fragment_timeout_retries = 0
+    last_seq_auth_expiry = 0
 
     num_parallel_downloads = num_parallel_downloads_ctx.get()
 
@@ -439,6 +440,18 @@ async def frag_iterator(
                 # stream access expired? retrieve a fresh manifest
                 # the stream may have finished while we were mid-download, so don't check that here
                 # FIXME: we need to check playability_status instead of bailing
+                if last_seq_auth_expiry == max_seq:
+                    status_queue.put_nowait(
+                        messages.StringMessage(
+                            f"Received HTTP 403 error on previous sequence {cur_seq=}, "
+                            "stopping operation."
+                        )
+                    )
+                    # we should probably error out of this
+                    return
+                # record the sequence we 403'd on - if we receive another one, then bail to
+                # avoid further errors
+                last_seq_auth_expiry = max_seq
                 status_queue.put_nowait(
                     messages.StringMessage(
                         f"Received HTTP 403 error {cur_seq=}, getting new player response"
