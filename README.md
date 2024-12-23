@@ -70,9 +70,10 @@ for development.
 manage installing Python as needed and isolating the library dependencies for you.
 
 1. [Install `uv`.](https://docs.astral.sh/uv/getting-started/installation/)
-2. `uv tool install "moonarchive[keepawake] @ git+https://github.com/nosoop/moonarchive"`
-3. `moonarchive ${URL}` (you may need to `uv tool update-shell` to update your `PATH`
-environment variable)
+2. `uv python install 3.11` to install Python 3.11.  Newer versions may work.
+3. `uv tool install "moonarchive[keepawake] @ git+https://github.com/nosoop/moonarchive"`
+4. `moonarchive ${URL}` (you may need to `uv tool update-shell` or `source $HOME/.local/bin/env`
+to update your `PATH` environment variable)
 
 [`uv`]: https://docs.astral.sh/uv/
 
