@@ -71,6 +71,13 @@ def main() -> None:
         help="Location for outputs (created if nonexistent; defaults to working directory)",
     )
     parser.add_argument(
+        "-k",
+        "--keep-ts-files",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Keep the raw downloaded files instead of deleting them on successful mux operations",
+    )
+    parser.add_argument(
         "--max-video-resolution",
         type=int,
         default=None,

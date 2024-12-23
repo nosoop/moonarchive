@@ -1020,6 +1020,8 @@ async def _run(args: "YouTubeDownloader") -> None:
     status.queue.put_nowait(messages.StreamMuxMessage(list(manifest_outputs)))
     status.queue.put_nowait(messages.StringMessage(str(manifest_outputs)))
 
+    intermediate_file_deletes: list[pathlib.Path] = []
+
     # output a file for each manifest we received fragments for
     for manifest_id, output_stream_paths in manifest_outputs.items():
         if len(output_stream_paths) != 2:
@@ -1100,10 +1102,16 @@ async def _run(args: "YouTubeDownloader") -> None:
             mux_output_name = f"{output_basename}-{video_id}.mp4"
 
         output_paths[outdir / mux_output_name] = output_mux_file
+        if proc.returncode == 0:
+            intermediate_file_deletes.extend(output_stream_paths)
 
     # if we only have one manifest with an unexpected output count, the logs will never be
     # rendered in the CLI - yield to other tasks here just in case
     await asyncio.sleep(0)
+
+    if not args.keep_ts_files:
+        for f in intermediate_file_deletes:
+            f.unlink()
 
     try:
         # bail if we fail to make the directory
@@ -1129,6 +1137,7 @@ class YouTubeDownloader(msgspec.Struct, kw_only=True):
     max_video_resolution: int | None = None
     staging_directory: pathlib.Path | None
     output_directory: pathlib.Path | None
+    keep_ts_files: bool = True  # for backwards compatibility
     poll_interval: int = 0
     poll_unavailable_interval: int = 0
     schedule_offset: int = 0
