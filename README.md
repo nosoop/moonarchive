@@ -41,6 +41,16 @@ changes to those projects instead.)
 
 [moombox]: https://github.com/nosoop/moombox
 
+### Dependencies
+
+- `moonarchive` is tested against Python 3.11.  The installation will bring in a number of other
+third-party packages.
+- [ffmpeg][] is required for creating the final file.  This is not installed automatically.
+On Windows, you can use `winget install ffmpeg`; for other platforms refer to your package
+manager.
+
+[ffmpeg]: https://ffmpeg.org/download.html
+
 ### via pip
 
 If you're comfortable with Python, it's probably a good idea to install this in a virtual
@@ -76,16 +86,6 @@ manage installing Python as needed and isolating the library dependencies for yo
 to update your `PATH` environment variable)
 
 [`uv`]: https://docs.astral.sh/uv/
-
-## Dependencies
-
-- `moonarchive` is tested against Python 3.11.  The installation will bring in a number of other
-third-party packages.
-- [ffmpeg][] is required for creating the final file.  This is not installed automatically.
-On Windows, you can use `winget install ffmpeg`; for other platforms refer to your package
-manager.
-
-[ffmpeg]: https://ffmpeg.org/download.html
 
 ## Features
 
