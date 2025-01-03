@@ -125,6 +125,13 @@ Pass one of the following:
 - `--po-token ${POTOKEN} --visitor-data ${VISITOR_DATA}` for non-logged in contexts
 - `--po-token ${POTOKEN} --cookies ${COOKIE_FILE}` for logged in contexts (member streams, etc.)
 
+It's not really clear how often you need to obtain a new proof-of-origin token.  The linked
+guide says 12 hours, but my personal experience on a residential connection has both visitor
+data and guest cookies lasting more than a month.
+
+It's likely that tokens linked to an actual user will be rotated out sooner, though I haven't
+been able to test that myself.
+
 [obtain a token]: https://github.com/yt-dlp/yt-dlp/wiki/Extractors#po-token-guide
 
 ## Contributions
