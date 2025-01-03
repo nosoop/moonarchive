@@ -89,10 +89,17 @@ to update your `PATH` environment variable)
 
 ## Features
 
-- Detection of updated manifests.  See [ytarchive#56][].  tl;dr in certain situations,
-ytarchive will appear to stall if the streamer changes certain settings mid-stream.
+- Detection of split broadcasts (updated manifests).  See [ytarchive#56][].  tl;dr in certain
+situations, ytarchive will appear to stall if the streamer changes certain settings mid-stream.
+    - moonarchive, in its current form, will mux out an individual file per broadcast (assuming
+    no other broadcast issues).  In theory it's possible to precisely merge broadcasts to one
+    file, but this requires processing the raw file's internal segment metadata added by YouTube
+    plus potential reencoding due to differing resolutions and codecs.
 - Handling of landscape-and-portrait transitions.  A streamer may swap width and height &mdash;
 this does not generate a new manifest, and resulting naively muxed files end up being garbage.
+    - moonarchive will not merge streams affected by this, and it's left to the user to decide
+    how to process the result (video streams will be split at resolution change boundaries,
+    while the audio streams will span the length of the broadcast).
 
 Important note on cookie authentication:  YouTube frequently rotates cookies; while a given file
 will work during the start of a stream, you will need an up-to-date copy whenever a player
