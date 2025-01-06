@@ -1,7 +1,7 @@
 #!/usr/bin/python3
 
 import asyncio
-from typing import AsyncIterator
+from typing import AsyncIterator, Self
 
 import msgspec
 
@@ -38,13 +38,13 @@ class FFMPEGProgress(msgspec.Struct, kw_only=True):
     @classmethod
     async def from_process_stream(
         cls, stdout: asyncio.StreamReader | None
-    ) -> AsyncIterator["FFMPEGProgress"]:
+    ) -> AsyncIterator[Self]:
         """
-        Yields instances from an open asyncio stream.
+        Yields progress information from an open asyncio stream.
 
         The application must be launched with ("-progress", "-") for ffmpeg to report
         machine-parseable progress information back to the caller.  "-stats" may also be
-        omitted to suppress ffmpeg's usual reporting to standard output.
+        omitted to suppress ffmpeg's usual reporting to the standard error stream.
 
         ffmpeg reports progress as a series of line-delimited key / value pairs with a
         "progress" key marking the end of a given progress update.
