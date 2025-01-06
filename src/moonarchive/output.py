@@ -51,9 +51,9 @@ class YTArchiveMessageHandler(BaseMessageHandler, tag="ytarchive"):
 
     async def handle_message(self, msg: msgtypes.BaseMessage) -> None:
         match msg:
-            case msg if isinstance(msg, msgtypes.StringMessage):
+            case msgtypes.StringMessage():
                 print(msg.text)
-            case msg if isinstance(msg, msgtypes.FragmentMessage):
+            case msgtypes.FragmentMessage():
                 self.max_seq = max(self.max_seq, msg.max_fragments)
                 if msg.media_type == "audio":
                     self.audio_seq = msg.current_fragment
@@ -68,14 +68,14 @@ class YTArchiveMessageHandler(BaseMessageHandler, tag="ytarchive"):
                     self.max_seq = 0
                 self.current_manifest = msg.manifest_id
                 self.print_frag_status_update()
-            case msg if isinstance(msg, msgtypes.DownloadStreamJobEndedMessage):
+            case msgtypes.DownloadStreamJobEndedMessage():
                 print()
                 print(f"Download job finished for type {msg.media_type}")
-            case msg if isinstance(msg, msgtypes.StreamInfoMessage):
+            case msgtypes.StreamInfoMessage():
                 print(f"Channel: {msg.channel_name}")
                 print(f"Video Title: {msg.video_title}")
                 print(f"Stream starts at {msg.start_datetime}")
-            case msg if isinstance(msg, msgtypes.FormatSelectionMessage):
+            case msgtypes.FormatSelectionMessage():
                 major_type_str = str(msg.major_type).capitalize()
                 display_media_type = msg.format.media_type.codec_primary or "unknown codec"
                 if msg.major_type == YTPlayerMediaType.VIDEO:
@@ -97,13 +97,13 @@ class YTArchiveMessageHandler(BaseMessageHandler, tag="ytarchive"):
                         f"{major_type_str} format selected (manifest "
                         f"{msg.manifest_id}, duration {msg.format.target_duration_sec})"
                     )
-            case msg if isinstance(msg, msgtypes.ExtractingPlayerResponseMessage):
+            case msgtypes.ExtractingPlayerResponseMessage():
                 print(
                     f"Extracting player response for itag {msg.itag}; segment error {msg.http_error_code}"
                 )
-            case msg if isinstance(msg, msgtypes.StreamUnavailableMessage):
+            case msgtypes.StreamUnavailableMessage():
                 print(f"{msg.status}: {msg.reason}")
-            case msg if isinstance(msg, msgtypes.DownloadJobFailedOutputMoveMessage):
+            case msgtypes.DownloadJobFailedOutputMoveMessage():
                 print("Failed to move output files to desired destination:")
                 for dest, src in msg.path_mapping.items():
                     print(f"- '{dest}' (from '{src}')")
