@@ -808,7 +808,16 @@ async def _run(args: "YouTubeDownloader") -> None:
         return
 
     assert resp.video_details
+    assert resp.microformat
+    assert resp.microformat.live_broadcast_details
     video_id = resp.video_details.video_id
+    status.queue.put_nowait(
+        messages.StreamInfoMessage(
+            resp.video_details.author,
+            resp.video_details.title,
+            resp.microformat.live_broadcast_details.start_datetime,
+        )
+    )
 
     workdir = args.staging_directory or pathlib.Path(".")
     workdir.mkdir(parents=True, exist_ok=True)

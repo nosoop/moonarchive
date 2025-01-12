@@ -35,6 +35,7 @@ class YTArchiveMessageHandler(BaseMessageHandler, tag="ytarchive"):
     max_seq: int = 0
     total_downloaded: int = 0
     current_manifest: str = ""
+    last_stream_info: msgtypes.StreamInfoMessage | None = None
 
     def print_frag_status_update(self) -> None:
         # sequence numbers are offset by one to match ytarchive output
@@ -72,9 +73,15 @@ class YTArchiveMessageHandler(BaseMessageHandler, tag="ytarchive"):
                 print()
                 print(f"Download job finished for type {msg.media_type}")
             case msgtypes.StreamInfoMessage():
-                print(f"Channel: {msg.channel_name}")
-                print(f"Video Title: {msg.video_title}")
-                print(f"Stream starts at {msg.start_datetime}")
+                if not self.last_stream_info:
+                    print(f"Channel: {msg.channel_name}")
+                    print(f"Video Title: {msg.video_title}")
+                if (
+                    not self.last_stream_info
+                    or self.last_stream_info.start_datetime != msg.start_datetime
+                ):
+                    print(f"Stream starts at {msg.start_datetime}")
+                self.last_stream_info = msg
             case msgtypes.FormatSelectionMessage():
                 major_type_str = str(msg.major_type).capitalize()
                 display_media_type = msg.format.media_type.codec_primary or "unknown codec"
