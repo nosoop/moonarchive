@@ -4,6 +4,7 @@ import asyncio
 import collections
 import dataclasses
 import datetime
+import hashlib
 import html.parser
 import io
 import json
@@ -166,6 +167,11 @@ async def _get_web_player_response(video_id: str) -> YTPlayerResponse | None:
             "content-type": "application/json",
         }
 
+        auth = _build_auth_from_cookies(cookies)
+        if auth:
+            headers["Authorization"] = auth
+            headers["X-Origin"] = "https://www.youtube.com"
+
         if visitor_data:
             ytcfg.visitor_data = visitor_data
         headers |= ytcfg.to_headers()
@@ -200,6 +206,25 @@ def _cookies_from_filepath() -> httpx.Cookies:
     if cookie_file and cookie_file.is_file() and cookie_file.exists():
         jar.load(str(cookie_file))
     return httpx.Cookies(jar)
+
+
+def _build_auth_from_cookies(
+    cookies: httpx.Cookies | None, origin: str = "https://www.youtube.com"
+) -> str | None:
+    # implementation blatantly stolen from
+    # https://github.com/yt-dlp/yt-dlp/blob/e3950399e4d471b987a2d693f8a6a476568e7c8a/yt_dlp/extractor/youtube.py#L541C52-L564
+    if not cookies:
+        return None
+    time_now = round(datetime.datetime.now(tz=datetime.UTC).timestamp())
+    sapisid_cookie = cookies.get("__Secure-3PAPISID") or cookies.get("SAPISID")
+    if not sapisid_cookie:
+        return None
+    if not cookies.get("SAPISID"):
+        cookies.set("SAPISID", sapisid_cookie, ".youtube.com")
+    sapisidhash = hashlib.sha1(
+        f"{time_now} {sapisid_cookie} {origin}".encode("utf-8")
+    ).hexdigest()
+    return f"SAPISIDHASH {time_now}_{sapisidhash}"
 
 
 @dataclasses.dataclass
