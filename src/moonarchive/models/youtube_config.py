@@ -25,7 +25,7 @@ class YTCFG(YTJSONStruct, kw_only=True):
         if self.visitor_data:
             headers["X-Goog-Visitor-Id"] = self.visitor_data
         if self.session_index:
-            headers["X-Goog-AuthUser"] = self.visitor_data
+            headers["X-Goog-AuthUser"] = self.session_index
         if self.delegated_session_id:
             headers["X-Goog-PageId"] = self.delegated_session_id
         if self.id_token:
