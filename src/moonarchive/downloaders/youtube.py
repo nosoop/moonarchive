@@ -13,6 +13,7 @@ import pathlib
 import shutil
 import string
 import sys
+import unicodedata
 import urllib.parse
 import urllib.request
 from contextvars import ContextVar
@@ -53,6 +54,16 @@ num_parallel_downloads_ctx: ContextVar[int] = ContextVar("num_parallel_downloads
 
 # for long running streams, YouTube allows retrieval of fragments from this far back
 NUM_SECS_FRAG_RETENTION = 86_400 * 5
+
+
+def _string_byte_trim(input: str, length: int) -> str:
+    # trims a string using a byte limit, while ensuring that it is still valid unicode
+    # https://stackoverflow.com/a/70304695
+    bytes_ = unicodedata.normalize("NFC", input).encode()
+    try:
+        return bytes_[:length].decode()
+    except UnicodeDecodeError as err:
+        return bytes_[: err.start].decode()
 
 
 def create_json_object_extractor(decl: str) -> Type[html.parser.HTMLParser]:
@@ -824,10 +835,38 @@ async def _run(args: "YouTubeDownloader") -> None:
 
     outdir = args.output_directory or pathlib.Path()
 
+    # derive filename from stream title at time of starting the download
+    # unlike ytarchive we use absolute paths when invoking ffmpeg,
+    # so we do not need to check for a '-' prefix
     output_basename = resp.video_details.title.translate(sanitize_table)
+
+    # https://en.wikipedia.org/wiki/Comparison_of_file_systems#Limits
+    # modern filesystems commonly have a maximum filename length of 255 bytes with higher limits on paths
+    # our default filename convention is also constrained by the following:
+    # - 12 bytes for video ID and separator '-'
+    # - 3 bytes for multi-broadcast stream extension '.00'; assume possibility of two-digit broadcast IDs
+    # - 12 bytes for longest possible file extension '.description'
+    #
+    # given this, 228 bytes seems like the absolute hard limit, but have a margin of error
+    #
+    # however upon further testing, it's observed that some applications have even shorter
+    # filename (basename?) length constraints like 240, so the revised hard limit is 213
+    trunc_basename = _string_byte_trim(output_basename, 192)
 
     # output_paths[dest] = src
     output_paths = {}
+
+    if output_basename != trunc_basename:
+        # save original title
+        output_basename = trunc_basename
+        title_path = workdir / f"{video_id}.title.txt"
+        title_path.write_text(
+            resp.video_details.title,
+            encoding="utf8",
+            newline="\n",
+        )
+        output_paths[outdir / f"{output_basename}-{video_id}.title.txt"] = title_path
+        status.queue.put_nowait(messages.StringMessage("Output filename will be truncated"))
 
     if args.write_description:
         desc_path = workdir / f"{video_id}.description"
