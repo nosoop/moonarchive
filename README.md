@@ -95,6 +95,8 @@ situations, ytarchive will appear to stall if the streamer changes certain setti
     no other broadcast issues).  In theory it's possible to precisely merge broadcasts to one
     file, but this requires processing the raw file's internal segment metadata added by YouTube
     plus potential reencoding due to differing resolutions and codecs.
+    - As far as I'm aware, regardless of this functionality, you cannot obtain fragments from a
+    previous broadcast if you start the application late.
 - Handling of landscape-and-portrait transitions.  A streamer may swap width and height &mdash;
 this does not generate a new manifest, and resulting naively muxed files end up being garbage.
     - moonarchive will not merge streams affected by this, and it's left to the user to decide
