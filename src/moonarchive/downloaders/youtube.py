@@ -27,7 +27,12 @@ import msgspec
 from ..models import messages as messages
 from ..models.ffmpeg import FFMPEGProgress
 from ..models.youtube_config import YTCFG
-from ..models.youtube_player import YTPlayerAdaptiveFormats, YTPlayerMediaType, YTPlayerResponse
+from ..models.youtube_player import (
+    YTPlayerAdaptiveFormats,
+    YTPlayerHeartbeatResponse,
+    YTPlayerMediaType,
+    YTPlayerResponse,
+)
 from ..output import BaseMessageHandler
 
 # table to remove illegal characters on Windows
@@ -148,6 +153,59 @@ async def extract_yt_cfg(url: str) -> YTCFG:
         return msgspec.convert(response_extractor.result, type=YTCFG)  # type: ignore
 
 
+async def _get_live_stream_status(video_id: str) -> YTPlayerHeartbeatResponse:
+    post_dict: dict = {
+        "context": {
+            "client": {"clientName": "WEB", "clientVersion": "2.20241121.01.00", "hl": "en"}
+        },
+        "heartbeatRequestParams": {
+            "heartbeatChecks": ["HEARTBEAT_CHECK_TYPE_LIVE_STREAM_STATUS"]
+        },
+    }
+    post_dict["videoId"] = video_id
+
+    ytcfg = ytcfg_ctx.get()
+    if not ytcfg:
+        # we assume a valid ytcfg at this point
+        raise ValueError("No YTCFG available in context")
+    visitor_data = visitor_data_ctx.get()
+
+    status_queue = status_queue_ctx.get()
+    cookies = _cookies_from_filepath()
+    async with httpx.AsyncClient(cookies=cookies) as client:
+        headers = {
+            "X-YouTube-Client-Name": "1",
+            "X-YouTube-Client-Version": "2.20241121.01.00",
+            "Origin": "https://www.youtube.com",
+            "content-type": "application/json",
+        }
+
+        if visitor_data:
+            ytcfg = msgspec.structs.replace(ytcfg, visitor_data=visitor_data)
+        headers |= ytcfg.to_headers()
+        post_dict["context"]["client"] |= ytcfg.to_post_context()
+
+        max_retries = 10
+        for n in range(max_retries):
+            try:
+                result = await client.post(
+                    "https://www.youtube.com/youtubei/v1/player/heartbeat?alt=json",
+                    content=json.dumps(post_dict).encode("utf8"),
+                    headers=headers,
+                )
+                result.raise_for_status()
+                return msgspec.json.decode(result.text, type=YTPlayerResponse)  # type: ignore
+            except (httpx.HTTPStatusError, httpx.TransportError):
+                status_queue.put_nowait(
+                    messages.StringMessage(
+                        "Failed to retrieve heartbeat response data "
+                        f"(attempt {n} of {max_retries})"
+                    )
+                )
+            await asyncio.sleep(5)
+        raise RuntimeError("Failed to obtain heartbeat response")
+
+
 async def _get_web_player_response(video_id: str) -> YTPlayerResponse | None:
     # the DASH manifest via web client expires every 30 seconds as of 2024-08-08
     # so now we masquerade as the android client and extract the manifest there
@@ -184,7 +242,7 @@ async def _get_web_player_response(video_id: str) -> YTPlayerResponse | None:
             headers["X-Origin"] = "https://www.youtube.com"
 
         if visitor_data:
-            ytcfg.visitor_data = visitor_data
+            ytcfg = msgspec.structs.replace(ytcfg, visitor_data=visitor_data)
         headers |= ytcfg.to_headers()
         post_dict["context"]["client"] |= ytcfg.to_post_context()
 
@@ -770,6 +828,14 @@ async def _run(args: "YouTubeDownloader") -> None:
 
     assert resp.video_details
     assert resp.microformat
+    if not resp.microformat.live_broadcast_details:
+        # return unavailable for non-live content
+        status.queue.put_nowait(
+            messages.StreamUnavailableMessage(
+                "NOT_LIVE_CONTENT", "This video does not have live streaming data available."
+            )
+        )
+        return
     status.queue.put_nowait(
         messages.StreamInfoMessage(
             resp.video_details.author,
@@ -781,13 +847,26 @@ async def _run(args: "YouTubeDownloader") -> None:
     if args.dry_run:
         return
 
+    video_id = resp.video_details.video_id if resp.video_details else None
+    heartbeat = YTPlayerHeartbeatResponse(playability_status=resp.playability_status)
+
     while not resp.streaming_data:
-        if not resp.microformat or resp.playability_status.status in ("LOGIN_REQUIRED",):
+        if heartbeat.playability_status.status == "OK":
+            resp = await extract_player_response(args.url)
+            if resp.streaming_data:
+                continue
+
+        # if LIVE_STREAM_OFFLINE then stream may have finished
+        if heartbeat.playability_status.status in (
+            "UNPLAYABLE",
+            "LOGIN_REQUIRED",
+        ):
             # waiting room appears to be unavailable; either recheck or stop
-            # "UNPLAYABLE" is used for members-only streams
+            # "UNPLAYABLE" is used for members-only streams without auth
+            # it is also used when the stream is private post-live
             status.queue.put_nowait(
                 messages.StreamUnavailableMessage(
-                    resp.playability_status.status, resp.playability_status.reason
+                    heartbeat.playability_status.status, heartbeat.playability_status.reason
                 )
             )
 
@@ -795,33 +874,47 @@ async def _run(args: "YouTubeDownloader") -> None:
                 return
             await asyncio.sleep(args.poll_unavailable_interval)
             resp = await extract_player_response(args.url)
+            heartbeat = YTPlayerHeartbeatResponse(playability_status=resp.playability_status)
             continue
 
-        # live_broadcast_details may not be available; LOGIN_REQUIRED should catch this
-        timestamp = resp.microformat.live_broadcast_details.start_datetime
-
-        # post-scheduled recheck interval
         seconds_wait = 20.0
-        if timestamp:
-            now = datetime.datetime.now(datetime.timezone.utc)
+        if (
+            heartbeat.playability_status.live_streamability
+            and heartbeat.playability_status.live_streamability.offline_slate
+        ):
+            timestamp = heartbeat.playability_status.live_streamability.offline_slate.scheduled_start_datetime
+            if timestamp:
+                now = datetime.datetime.now(datetime.timezone.utc)
 
-            seconds_remaining = (timestamp - now).total_seconds() - args.schedule_offset
-            status.queue.put_nowait(
-                messages.StringMessage(
-                    f"No stream available (scheduled to start in {int(seconds_remaining)}s at {timestamp})"
-                )
-            )
-
-            if seconds_remaining > 0:
-                seconds_wait = seconds_remaining
-                if args.poll_interval > 0 and seconds_wait > args.poll_interval:
-                    seconds_wait = args.poll_interval
+                seconds_remaining = (timestamp - now).total_seconds() - args.schedule_offset
+                if seconds_remaining > 0:
+                    status.queue.put_nowait(
+                        messages.StringMessage(
+                            f"No stream available (scheduled to start in {int(seconds_remaining)}s at {timestamp})"
+                        )
+                    )
+                else:
+                    status.queue.put_nowait(
+                        messages.StringMessage(
+                            f"No stream available (should have started {int(-seconds_remaining)}s ago at {timestamp})"
+                        )
+                    )
+                if seconds_remaining > 0:
+                    seconds_wait = seconds_remaining
+                    if args.poll_interval > 0 and seconds_wait > args.poll_interval:
+                        seconds_wait = args.poll_interval
         else:
             status.queue.put_nowait(messages.StringMessage("No stream available, polling"))
 
         await asyncio.sleep(seconds_wait)
-
+        if video_id:
+            try:
+                heartbeat = await _get_live_stream_status(video_id)
+                continue
+            except RuntimeError:
+                pass
         resp = await extract_player_response(args.url)
+        heartbeat = YTPlayerHeartbeatResponse(playability_status=resp.playability_status)
 
     if args.list_formats:
         for format in resp.streaming_data.adaptive_formats:

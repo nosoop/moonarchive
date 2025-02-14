@@ -51,13 +51,47 @@ class YTPlayerResponseContext(YTJSONStruct):
     main_app_web_response_context: YTPlayerMainAppWebResponseContext | None = None
 
 
+class YTPlayerLiveStreamabilityOfflineSlateRenderer(YTJSONStruct):
+    scheduled_start_time: str | None = None
+
+    @property
+    def scheduled_start_datetime(self) -> datetime.datetime | None:
+        if not self.scheduled_start_time:
+            return None
+        return datetime.datetime.fromtimestamp(int(self.scheduled_start_time), tz=datetime.UTC)
+
+
+class YTPlayerLiveStreamabilityOfflineSlate(YTJSONStruct):
+    live_stream_offline_slate_renderer: YTPlayerLiveStreamabilityOfflineSlateRenderer
+
+    def __getattr__(self, name: str):
+        # proxy attribute accesses to the renderer
+        return getattr(self.live_stream_offline_slate_renderer, name)
+
+
+class YTPlayerLiveStreamabilityRenderer(YTJSONStruct):
+    video_id: str
+    broadcast_id: str | None = None
+
+    # only if status = LIVE_STREAM_OFFLINE
+    offline_slate: YTPlayerLiveStreamabilityOfflineSlate | None = None
+
+
+class YTPlayerLiveStreamability(YTJSONStruct):
+    live_streamability_renderer: YTPlayerLiveStreamabilityRenderer
+
+    def __getattr__(self, name: str):
+        # proxy attribute accesses to the renderer
+        return getattr(self.live_streamability_renderer, name)
+
+
 class YTPlayerPlayabilityStatus(YTJSONStruct):
     status: str
     playable_in_embed: bool = False
     reason: Optional[str] = None
 
     # may be present when status is LIVE_STREAM_OFFLINE
-    # live_streamability: Optional[YTPlayerLiveStreamability] = None
+    live_streamability: YTPlayerLiveStreamability | None = None
 
 
 class YTPlayerAdaptiveFormats(YTJSONStruct):
@@ -195,6 +229,10 @@ class YTPlayerMicroformat(YTJSONStruct):
     def __getattr__(self, name: str):
         # proxy attribute accesses to the renderer
         return getattr(self.player_microformat_renderer, name)
+
+
+class YTPlayerHeartbeatResponse(YTJSONStruct):
+    playability_status: YTPlayerPlayabilityStatus
 
 
 class YTPlayerResponse(YTJSONStruct):

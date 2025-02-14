@@ -35,7 +35,7 @@ class StreamUnavailableMessage(BaseMessage, tag="stream-unavailable"):
 class StreamInfoMessage(BaseMessage, tag="stream-info"):
     channel_name: str
     video_title: str
-    start_datetime: datetime.datetime
+    start_datetime: datetime.datetime | None
 
 
 class StreamVideoFormatMessage(BaseMessage, tag="stream-video-format"):
