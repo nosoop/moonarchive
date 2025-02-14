@@ -560,13 +560,24 @@ async def frag_iterator(
                     #   reason == "This live stream recording is not available."
                     #   reason == "This video is available to this channel's members on level..."
 
-                    # this code path should also be hit if cookies are expired, in which case we are not logged in
-                    # TODO: properly recheck stream while authz'd
                     if (
                         probably_caught_up
                         and not resp.microformat.live_broadcast_details.is_live_now
                     ):
                         return
+
+                    # this code path is also hit if cookies are expired, in which case we are
+                    # not logged in.  this is fine; we'll retry fetching the frag on the current
+                    # manifest and continue attempting authed player requests until the stream
+                    # ends (user can update auth files out-of-band and will be reflected on
+                    # next request); without auth we won't know how many fragments are available
+                    #
+                    # if the manifest isn't expired (members stream, temporarily offline)
+                    # retrying the current manifest should be all that's necessary
+                    #
+                    # however, if the manifest *is* expired then a 403 result will hit the
+                    # 'repeated bad auth' code path and the download will stop
+                    # we could try setting last_seq_auth_expiry = 0
                     pass
                 status_queue.put_nowait(
                     messages.StringMessage(
@@ -773,6 +784,7 @@ async def _run(args: "YouTubeDownloader") -> None:
     while not resp.streaming_data:
         if not resp.microformat or resp.playability_status.status in ("LOGIN_REQUIRED",):
             # waiting room appears to be unavailable; either recheck or stop
+            # "UNPLAYABLE" is used for members-only streams
             status.queue.put_nowait(
                 messages.StreamUnavailableMessage(
                     resp.playability_status.status, resp.playability_status.reason
