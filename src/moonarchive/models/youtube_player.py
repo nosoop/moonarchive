@@ -1,5 +1,6 @@
 #!/usr/bin/python3
 
+import asyncio
 import datetime
 import enum
 import itertools
@@ -169,8 +170,13 @@ class YTPlayerStreamingData(YTJSONStruct):
         if not self.dash_manifest_url:
             return None
         async with httpx.AsyncClient() as client:
-            resp = await client.get(self.dash_manifest_url, timeout=5)
-            return YTDashManifest.from_manifest_text(resp.text)
+            for _ in range(6):
+                try:
+                    resp = await client.get(self.dash_manifest_url, timeout=5)
+                    return YTDashManifest.from_manifest_text(resp.text)
+                except httpx.RequestError:
+                    await asyncio.sleep(5.0)
+        return None
 
 
 class YTPlayerVideoDetails(YTJSONStruct):
