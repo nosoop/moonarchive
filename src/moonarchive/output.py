@@ -120,3 +120,6 @@ class YTArchiveMessageHandler(BaseMessageHandler, tag="ytarchive"):
     @property
     def human_total_size(self) -> str:
         return _sizeof_fmt(self.total_downloaded)
+
+
+CLIMessageHandlers = JSONLMessageHandler | YTArchiveMessageHandler

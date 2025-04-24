@@ -4,13 +4,14 @@
 import argparse
 import contextlib
 import pathlib
+import typing
 from types import ModuleType
 
 import colorama
 import msgspec
 
 from .downloaders.youtube import YouTubeDownloader
-from .output import YTArchiveMessageHandler
+from .output import CLIMessageHandlers
 
 wakepy: ModuleType | None = None
 try:
@@ -69,6 +70,17 @@ def main() -> None:
         "--output-directory",
         type=pathlib.Path,
         help="Location for outputs (created if nonexistent; defaults to working directory)",
+    )
+    parser.add_argument(
+        "--progress-style",
+        type=str,
+        choices=[
+            handler.tag
+            for handler in msgspec.inspect.multi_type_info(typing.get_args(CLIMessageHandlers))
+            if isinstance(handler, msgspec.inspect.StructType)
+        ],
+        default="ytarchive",
+        help="Style to use for displaying progress results",
     )
     parser.add_argument(
         "-k",
@@ -142,7 +154,7 @@ def main() -> None:
                 )
             context.enter_context(wakepy.keep.running())
 
-        handler = YTArchiveMessageHandler()
+        handler = msgspec.convert({"type": args.progress_style}, CLIMessageHandlers)
 
         downloader = msgspec.convert(vars(args), type=YouTubeDownloader)
         downloader.handlers.append(handler)
