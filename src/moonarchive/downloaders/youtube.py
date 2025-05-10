@@ -7,6 +7,7 @@ import datetime
 import hashlib
 import html.parser
 import io
+import itertools
 import json
 import operator
 import pathlib
@@ -66,7 +67,6 @@ class _Browser(Protocol):
 browser_ctx: ContextVar[_Browser | None] = ContextVar("browser", default=None)
 
 ytcfg_ctx: ContextVar[YTCFG | None] = ContextVar("ytcfg", default=None)
-
 
 # number of downloads allowed for a substream
 num_parallel_downloads_ctx: ContextVar[int] = ContextVar("num_parallel_downloads")
@@ -443,14 +443,8 @@ async def frag_iterator(
     assert resp.video_details
     video_id = resp.video_details.video_id
 
-    # fetch a response made with our visitor ID
-    try_resp = await _get_web_player_response(video_id)
-    if not try_resp:
-        raise ValueError("Failed to retrieve a web player response")
-    resp = try_resp
-    if not resp.streaming_data or not resp.video_details:
-        raise ValueError("Received a non-streamable player response")
-
+    # the player response is expected to initially be a valid stream to download from
+    assert resp.streaming_data
     manifest = await resp.streaming_data.get_dash_manifest()
     if not manifest:
         raise ValueError("Received a response with no DASH manifest")
@@ -593,6 +587,7 @@ async def frag_iterator(
                 status_queue.put_nowait(
                     messages.StringMessage(f"Received HTTP 401 error {cur_seq=}, retrying")
                 )
+                # TODO: adjust our num_parallel_downloads down for a period of time
                 await asyncio.sleep(10)
                 continue
             else:
@@ -739,25 +734,8 @@ async def frag_iterator(
 
         assert resp.streaming_data.dash_manifest_id
         if current_manifest_id != resp.streaming_data.dash_manifest_id:
-            # player response has a different manfifest ID than what we're aware of
-            # reset the sequence counter
-            earliest_seq_available = int(
-                manifest.start_number - (NUM_SECS_FRAG_RETENTION // timeout)
-            )
-            cur_seq = max(0, earliest_seq_available)
-            max_seq = 0
-            current_manifest_id = resp.streaming_data.dash_manifest_id
-
-            # update format to the best available
-            # manifest.format_urls raises a key error
-            preferred_format, *_ = selector.select(resp.streaming_data.adaptive_formats)
-            itag = preferred_format.itag
-
-            status_queue.put_nowait(
-                messages.FormatSelectionMessage(
-                    current_manifest_id, selector.major_type, preferred_format
-                )
-            )
+            # manifest ID differs; we're done
+            return
 
 
 @dataclasses.dataclass
@@ -1069,6 +1047,7 @@ async def _run(args: "YouTubeDownloader") -> None:
                 thumb_dest_path
             )
 
+    broadcast_tasks: dict[str, list[asyncio.Task]] = {}
     manifest_outputs: dict[str, set[pathlib.Path]] = collections.defaultdict(set)
     async with asyncio.TaskGroup() as tg:
         vidsel = FormatSelector(
@@ -1077,18 +1056,74 @@ async def _run(args: "YouTubeDownloader") -> None:
         if args.prioritize_vp9:
             vidsel.codec = "vp9"
 
-        # tasks to write streams to file
-        video_stream_dl = tg.create_task(stream_downloader(resp, vidsel, workdir))
-        audio_stream_dl = tg.create_task(
-            stream_downloader(resp, FormatSelector(YTPlayerMediaType.AUDIO), workdir)
+        while True:
+            heartbeat = await _get_live_stream_status(video_id)
+            playability_status = heartbeat.playability_status
+
+            # spin up tasks for any new broadcasts seen
+            # we do this first so we have at least one broadcast if the stream has finished
+            if playability_status.live_streamability:
+                live_streamability = playability_status.live_streamability
+
+                broadcast_key = live_streamability.broadcast_id
+                if broadcast_key not in broadcast_tasks:
+                    broadcast_resp = await _get_web_player_response(video_id)
+                    if broadcast_resp:
+                        resp_broadcast_key = playability_status.live_streamability.broadcast_id
+                        # ensure broadcast didn't change again since the heartbeat response
+                        if resp_broadcast_key == broadcast_key:
+                            video_stream_dl = tg.create_task(
+                                stream_downloader(broadcast_resp, vidsel, workdir)
+                            )
+                            audio_stream_dl = tg.create_task(
+                                stream_downloader(
+                                    broadcast_resp,
+                                    FormatSelector(YTPlayerMediaType.AUDIO),
+                                    workdir,
+                                )
+                            )
+                            broadcast_tasks[broadcast_key] = [video_stream_dl, audio_stream_dl]
+                        status.queue.put_nowait(
+                            messages.StringMessage(
+                                f"Queued broadcast {resp_broadcast_key} for download"
+                            )
+                        )
+
+            if playability_status.status == "OK":
+                if heartbeat.stop_heartbeat:
+                    break
+                pass
+            elif playability_status.status == "LIVE_STREAM_OFFLINE":
+                if not playability_status.live_streamability:
+                    # no auth + member stream?
+                    # ideally we block here until we get valid auth
+                    break
+                elif playability_status.live_streamability.display_endscreen:
+                    break  # stream is over
+            elif playability_status.status == "UNPLAYABLE":
+                # privated stream
+                break
+            else:
+                status.queue.put_nowait(
+                    messages.StringMessage(
+                        f"Unexpected heartbeat status response {playability_status.status}"
+                    )
+                )
+
+            await asyncio.sleep(20)
+        status.queue.put_nowait(
+            messages.StringMessage(
+                "Done with heartbeat checks; waiting for broadcast download to finish"
+            )
         )
-        for task in asyncio.as_completed((video_stream_dl, audio_stream_dl)):
-            try:
-                result = await task
-                for manifest_id, output_prefixes in result.items():
-                    manifest_outputs[manifest_id] |= output_prefixes
-            except Exception as exc:
-                print(type(exc), exc)
+
+    for task in itertools.chain.from_iterable(broadcast_tasks.values()):
+        try:
+            result = await task
+            for manifest_id, output_prefixes in result.items():
+                manifest_outputs[manifest_id] |= output_prefixes
+        except Exception as exc:
+            print(type(exc), exc)
 
     status.queue.put_nowait(messages.StreamMuxMessage(list(manifest_outputs)))
     status.queue.put_nowait(messages.StringMessage(str(manifest_outputs)))

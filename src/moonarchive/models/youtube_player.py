@@ -73,6 +73,7 @@ class YTPlayerLiveStreamabilityOfflineSlate(YTJSONStruct):
 class YTPlayerLiveStreamabilityRenderer(YTJSONStruct):
     video_id: str
     broadcast_id: str | None = None
+    display_endscreen: bool | None = False
 
     # only if status = LIVE_STREAM_OFFLINE
     offline_slate: YTPlayerLiveStreamabilityOfflineSlate | None = None
@@ -239,6 +240,7 @@ class YTPlayerMicroformat(YTJSONStruct):
 
 class YTPlayerHeartbeatResponse(YTJSONStruct):
     playability_status: YTPlayerPlayabilityStatus
+    stop_heartbeat: bool | None = False
 
 
 class YTPlayerResponse(YTJSONStruct):
@@ -251,3 +253,5 @@ class YTPlayerResponse(YTJSONStruct):
 
     # this is not present on streams happening in the future
     streaming_data: Optional[YTPlayerStreamingData] = None
+
+    stop_heartbeat: bool | None = False
