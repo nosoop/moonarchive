@@ -104,8 +104,9 @@ this does not generate a new manifest, and resulting naively muxed files end up 
     while the audio streams will span the length of the broadcast).
 
 Important note on cookie authentication:  YouTube frequently rotates cookies; while a given file
-will work during the start of a stream, you will need an up-to-date copy whenever a player
-request is made.
+will work during the start of a stream, it will need to be updated whenever a player request is
+made (since you're authenticated with proof-of-origin, this happens every 6 hours, or if the
+stream goes offline and needs to be rechecked).
 
 [ytarchive#56]: https://github.com/Kethsar/ytarchive/issues/56
 
@@ -118,6 +119,14 @@ Without it, streams will expire after 30 seconds and `moonarchive` will need to 
 requests for new copies of the manifest.  This behavior, when done at a high enough frequency,
 will trigger YouTube's bot detection, which at minimum will invalidate ongoing downloads.
 
+If `moonarchive` needs to obtain a new copy of the manifest, the following message is displayed
+in the application output:
+
+> Received HTTP 403 error cur_seq=21605, getting new player response
+
+(As stated before, with proof-of-origin, manifests normally expire after 6 hours.  Seeing this
+message on long-running streams is expected behavior.)
+
 While one instance of `moonarchive` should not make requests frequently enough to trigger
 YouTube, if you plan on downloading items in parallel it's strongly recommended to
 [obtain a token][].
@@ -129,12 +138,12 @@ Pass one of the following:
 
 It's not really clear how often you need to obtain a new proof-of-origin token.  The linked
 guide says 12 hours, but my personal experience on a residential connection has both visitor
-data and guest cookies lasting more than a month.
+data and guest cookies lasting more than a month with their corresponding tokens.
 
 It's likely that tokens linked to an actual user will be rotated out sooner, though I haven't
 been able to test that myself.
 
-[obtain a token]: https://github.com/yt-dlp/yt-dlp/wiki/Extractors#po-token-guide
+[obtain a token]: https://github.com/yt-dlp/yt-dlp/wiki/PO-Token-Guide
 
 ## Contributions
 
