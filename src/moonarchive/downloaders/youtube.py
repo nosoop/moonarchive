@@ -13,7 +13,6 @@ import pathlib
 import shutil
 import string
 import sys
-import unicodedata
 import urllib.parse
 import urllib.request
 from contextvars import ContextVar
@@ -62,9 +61,11 @@ NUM_SECS_FRAG_RETENTION = 86_400 * 5
 
 
 def _string_byte_trim(input: str, length: int) -> str:
-    # trims a string using a byte limit, while ensuring that it is still valid unicode
-    # https://stackoverflow.com/a/70304695
-    bytes_ = unicodedata.normalize("NFC", input).encode()
+    """
+    Trims a string using a byte limit, while ensuring that it is still valid Unicode.
+    https://stackoverflow.com/a/70304695
+    """
+    bytes_ = input.encode()
     try:
         return bytes_[:length].decode()
     except UnicodeDecodeError as err:
