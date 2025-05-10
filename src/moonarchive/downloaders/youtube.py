@@ -59,6 +59,13 @@ num_parallel_downloads_ctx: ContextVar[int] = ContextVar("num_parallel_downloads
 # for long running streams, YouTube allows retrieval of fragments from this far back
 NUM_SECS_FRAG_RETENTION = 86_400 * 5
 
+# mapping of cookie names to their authorization keys
+_AUTH_HASHES = {
+    "SAPISID": "SAPISIDHASH",
+    "__Secure-1PAPISID": "SAPISID1PHASH",
+    "__Secure-3PAPISID": "SAPISID3PHASH",
+}
+
 
 def _string_byte_trim(input: str, length: int) -> str:
     """
@@ -181,6 +188,11 @@ async def _get_live_stream_status(video_id: str) -> YTPlayerHeartbeatResponse:
             "content-type": "application/json",
         }
 
+        auth = _build_auth_from_cookies(cookies, user_session_id=ytcfg.user_session_id)
+        if auth:
+            headers["Authorization"] = auth
+            headers["X-Origin"] = "https://www.youtube.com"
+
         if visitor_data:
             ytcfg = msgspec.structs.replace(ytcfg, visitor_data=visitor_data)
         headers |= ytcfg.to_headers()
@@ -237,7 +249,7 @@ async def _get_web_player_response(video_id: str) -> YTPlayerResponse | None:
             "content-type": "application/json",
         }
 
-        auth = _build_auth_from_cookies(cookies)
+        auth = _build_auth_from_cookies(cookies, user_session_id=ytcfg.user_session_id)
         if auth:
             headers["Authorization"] = auth
             headers["X-Origin"] = "https://www.youtube.com"
@@ -279,22 +291,44 @@ def _cookies_from_filepath() -> httpx.Cookies:
 
 
 def _build_auth_from_cookies(
-    cookies: httpx.Cookies | None, origin: str = "https://www.youtube.com"
+    cookies: httpx.Cookies | None,
+    origin: str = "https://www.youtube.com",
+    user_session_id: str | None = None,
+    current_dt: datetime.datetime | None = None,
 ) -> str | None:
-    # implementation blatantly stolen from
-    # https://github.com/yt-dlp/yt-dlp/blob/e3950399e4d471b987a2d693f8a6a476568e7c8a/yt_dlp/extractor/youtube.py#L541C52-L564
+    # implementation adapted from yt-dlp (2025.01.12)
+    # https://github.com/yt-dlp/yt-dlp/blob/75079f4e3f7dce49b61ef01da7adcd9876a0ca3b/yt_dlp/extractor/youtube.py#L652-L692
     if not cookies:
         return None
-    time_now = round(datetime.datetime.now(tz=datetime.UTC).timestamp())
+    if not current_dt:
+        current_dt = datetime.datetime.now(tz=datetime.UTC)
+
     sapisid_cookie = cookies.get("__Secure-3PAPISID") or cookies.get("SAPISID")
     if not sapisid_cookie:
         return None
     if not cookies.get("SAPISID"):
         cookies.set("SAPISID", sapisid_cookie, ".youtube.com")
-    sapisidhash = hashlib.sha1(
-        f"{time_now} {sapisid_cookie} {origin}".encode("utf-8")
-    ).hexdigest()
-    return f"SAPISIDHASH {time_now}_{sapisidhash}"
+
+    extra_data = {}
+    if user_session_id:
+        extra_data["u"] = user_session_id
+
+    current_timestamp = round(current_dt.timestamp())
+    authorizations = []
+    for cookie, auth_name in _AUTH_HASHES.items():
+        cookie_value = cookies.get(cookie)
+        if cookie_value is None:
+            continue
+        input_components = []
+        if extra_data:
+            input_components.append(":".join(extra_data.values()))
+        input_components.extend([str(current_timestamp), cookie_value, origin])
+        sidhash = hashlib.sha1(" ".join(input_components).encode("utf-8")).hexdigest()
+        output_components = [str(current_timestamp), sidhash]
+        if extra_data:
+            output_components.append("".join(extra_data))
+        authorizations.append(f"{auth_name} {'_'.join(output_components)}")
+    return " ".join(authorizations)
 
 
 @dataclasses.dataclass

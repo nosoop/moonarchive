@@ -16,6 +16,7 @@ class YTCFG(YTJSONStruct, kw_only=True):
     innertube_ctx_client_version: str = msgspec.field(name="INNERTUBE_CONTEXT_CLIENT_VERSION")
     session_index: str | None = msgspec.field(name="SESSION_INDEX", default=None)
     visitor_data: str = msgspec.field(name="VISITOR_DATA")
+    user_session_id: str | None = msgspec.field(name="USER_SESSION_ID", default=None)
 
     def to_headers(self) -> dict[str, str]:
         headers = {
