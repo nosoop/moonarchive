@@ -58,16 +58,16 @@ environment so the libraries are isolated from the rest of the system.
 
 If you're not, consider [installing via uv](#via-uv) instead.
 
-1. `pip install "moonarchive[keepawake] @ git+https://github.com/nosoop/moonarchive"`
-    - `keepawake` is an optional extra.  See the [Extras](#extras) section below for further
-    details on each.
+1. `pip install "moonarchive[keepawake,cookies] @ git+https://github.com/nosoop/moonarchive"`
+    - `keepawake` and `cookies` are optional extras.  See the [Extras](#extras) section below
+    for further details on each.
 2. At minimum, `moonarchive ${URL}` on an upcoming or currently live stream to download;
 `moonarchive --help` to view all possible options.
 
 For development:
 
-1. Use `[keepawake,dev]` with the `pip` command above to install all packages, including those
-for development.
+1. Use `[keepawake,cookies,dev]` with the `pip` command above to install all packages, including
+those for development.
 2. Install [`just`](https://github.com/casey/just).
 3. Make your changes.  Prior to committing, run `just test` and `just format`.
 
@@ -78,7 +78,7 @@ manage installing Python as needed and isolating the library dependencies for yo
 
 1. [Install `uv`.](https://docs.astral.sh/uv/getting-started/installation/)
 2. `uv python install 3.11` to install Python 3.11.  Newer versions may work.
-3. `uv tool install "moonarchive[keepawake] @ git+https://github.com/nosoop/moonarchive"`
+3. `uv tool install "moonarchive[keepawake,cookies] @ git+https://github.com/nosoop/moonarchive"`
 4. `moonarchive ${URL}` (you may need to `uv tool update-shell` or `source $HOME/.local/bin/env`
 to update your `PATH` environment variable)
 
@@ -103,6 +103,26 @@ gracefully recover, provided the stream contents are still available.
 
 The keepawake behavior only applies to the CLI application and is not active when using the
 module API.
+
+#### `cookies`
+
+This installs an optional dependency on [browser-cookie3][], allowing moonarchive to access the
+browser's cookies on-demand whenever certain requests are made.
+
+With this extra, you can use `--cookies-from-browser` to specify a given browser to extract
+cookies from, and `--cookies` to specify the cookie database for that browser.
+
+Without this extra, you can still use `--cookies` to specify a cookie file in Netscape format,
+which will also be loaded as needed on requests.  It's recommended to follow
+[the yt-dlp guide on exporting YouTube cookies][yt-dlp cookies] in that case to ensure cookies
+are valid across the lifetime of the stream download.
+
+I've personally checked the code in [the 0.20.1 release][audited bc3] and found nothing
+questionable.  Whether or not that's acceptable is up to you to decide.
+
+[browser-cookie3]: https://pypi.org/project/browser-cookie3
+[audited bc3]: https://github.com/borisbabic/browser_cookie3/commit/03895797e48dd107806db171d8392c562151807d
+[yt-dlp cookies]: https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies
 
 #### `dev`
 

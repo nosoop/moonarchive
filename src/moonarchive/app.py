@@ -112,7 +112,14 @@ def main() -> None:
         "--cookies",
         type=pathlib.Path,
         dest="cookie_file",
-        help="Cookies file in Netscape format",
+        help="Cookies file path.  If --cookies-from-browser is specified, this expects the "
+        "browser-specific cookie store.  Otherwise, it expects a cookie file in Netscape "
+        "format.",
+    )
+    parser.add_argument(
+        "--cookies-from-browser",
+        type=str,
+        help="Specifies a browser to load cookies from.",
     )
     parser.add_argument(
         "--list-formats",

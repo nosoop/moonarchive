@@ -17,7 +17,8 @@ import urllib.parse
 import urllib.request
 from contextvars import ContextVar
 from http.cookiejar import MozillaCookieJar
-from typing import AsyncIterator, Type
+from types import ModuleType
+from typing import AsyncIterator, Protocol, Type
 
 import av
 import httpx
@@ -34,6 +35,12 @@ from ..models.youtube_player import (
 )
 from ..output import BaseMessageHandler
 
+browser_cookie3: ModuleType | None = None
+try:
+    import browser_cookie3  # type: ignore
+except ImportError:
+    pass
+
 # table to remove illegal characters on Windows
 # we use this to match ytarchive file output behavior
 sanitize_table = str.maketrans({c: "_" for c in r'<>:"/\|?*'})
@@ -48,6 +55,15 @@ visitor_data_ctx: ContextVar[str | None] = ContextVar("visitor_data", default=No
 
 # optional cookie file for making authenticated requests
 cookie_file_ctx: ContextVar[pathlib.Path | None] = ContextVar("cookie_file", default=None)
+
+
+# browser method for retrieving cookies
+class _Browser(Protocol):
+    def __call__(self, cookie_file: pathlib.Path | None = None, domain_name: str = ""):
+        pass
+
+
+browser_ctx: ContextVar[_Browser | None] = ContextVar("browser", default=None)
 
 ytcfg_ctx: ContextVar[YTCFG | None] = ContextVar("ytcfg", default=None)
 
@@ -281,10 +297,19 @@ async def _get_web_player_response(video_id: str) -> YTPlayerResponse | None:
 
 
 def _cookies_from_filepath() -> httpx.Cookies:
-    # since sessions refresh frequently, always grab cookies from file so they're
-    # updated out-of-band
-    jar = MozillaCookieJar()
+    """
+    Retrieves cookies from the given file.  This is called on-demand during normal operation,
+    allowing cookies to be updated out-of-band.
+
+    If browser_cookie3 is installed, this may also access cookies from a web browser installed
+    on the system.
+    """
     cookie_file = cookie_file_ctx.get()
+    browser = browser_ctx.get()
+    if browser is not None:
+        jar = browser(cookie_file=cookie_file, domain_name="youtube.com")
+        return httpx.Cookies(jar)
+    jar = MozillaCookieJar()
     if cookie_file and cookie_file.is_file() and cookie_file.exists():
         jar.load(str(cookie_file))
     return httpx.Cookies(jar)
@@ -846,6 +871,19 @@ async def _run(args: "YouTubeDownloader") -> None:
     po_token_ctx.set(args.po_token)
     visitor_data_ctx.set(args.visitor_data)
     cookie_file_ctx.set(args.cookie_file)
+    if args.cookies_from_browser:
+        if not browser_cookie3:
+            raise ValueError(
+                "Cannot set cookies from browser; missing browser-cookie3 dependency"
+            )
+        _browser_fns: dict[str, _Browser] = {
+            b.__name__: b for b in browser_cookie3.all_browsers
+        }
+        if args.cookies_from_browser not in _browser_fns:
+            raise ValueError(
+                f"Cannot set cookies from unknown browser {args.cookies_from_browser}"
+            )
+        browser_ctx.set(_browser_fns[args.cookies_from_browser])
     ytcfg_ctx.set(await extract_yt_cfg(args.url))
 
     # hold a reference to the output handler so it doesn't get GC'd until we're out of scope
@@ -1180,6 +1218,7 @@ class YouTubeDownloader(msgspec.Struct, kw_only=True):
     list_formats: bool = False
     ffmpeg_path: pathlib.Path | None = None
     cookie_file: pathlib.Path | None = None
+    cookies_from_browser: str | None = None
     num_parallel_downloads: int = 1
     po_token: str | None = None
     visitor_data: str | None = None

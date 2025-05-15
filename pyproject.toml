@@ -26,6 +26,9 @@ dev = [
 keepawake = [
     "wakepy == 0.9.1",
 ]
+cookies = [
+    "browser-cookie3 == 0.20.1",
+]
 
 [build-system]
 build-backend = 'setuptools.build_meta'
