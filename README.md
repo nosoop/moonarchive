@@ -59,11 +59,8 @@ environment so the libraries are isolated from the rest of the system.
 If you're not, consider [installing via uv](#via-uv) instead.
 
 1. `pip install "moonarchive[keepawake] @ git+https://github.com/nosoop/moonarchive"`
-    - Using `[keepawake]` installs an optional library that ensures the system doesn't go into
-    standby while waiting for the stream and while downloading.  Otherwise, you will need to
-    pass `--no-keep-awake` to the application to acknowledge that possibility.
-    - The keepawake mechanism only applies to the CLI application; if you are calling the API
-    directly you will have to replicate it yourself.
+    - `keepawake` is an optional extra.  See the [Extras](#extras) section below for further
+    details on each.
 2. At minimum, `moonarchive ${URL}` on an upcoming or currently live stream to download;
 `moonarchive --help` to view all possible options.
 
@@ -86,6 +83,32 @@ manage installing Python as needed and isolating the library dependencies for yo
 to update your `PATH` environment variable)
 
 [`uv`]: https://docs.astral.sh/uv/
+
+### Extras
+
+The package includes a number of optional dependencies that can be installed for additional
+functionality.
+
+#### `keepawake`
+
+This installs an optional dependency ensuring that, when using the CLI, the system doesn't
+automatically go into standby while the application is running (waiting for a stream and while
+downloading).
+
+If this extra is not installed, you will need to pass `--no-keep-awake` to the application to
+acknowledge the possibility that the system may sleep.
+
+In the event that the system does go to sleep (whether manually or on idle) moonarchive should
+gracefully recover, provided the stream contents are still available.
+
+The keepawake behavior only applies to the CLI application and is not active when using the
+module API.
+
+#### `dev`
+
+Installs `mypy` and `ruff` for typechecking and linting respectively.  This ensures
+consistency of code formatting for contributors, and tries to check the correctness of type
+annotations.
 
 ## Features
 
