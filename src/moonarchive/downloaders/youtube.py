@@ -127,6 +127,19 @@ def create_json_object_extractor(decl: str) -> Type[html.parser.HTMLParser]:
 PlayerResponseExtractor = create_json_object_extractor("var ytInitialPlayerResponse =")
 YTCFGExtractor = create_json_object_extractor('ytcfg.set({"CLIENT')
 
+# initial innertube data; these should be replaced by the results from extract_yt_cfg
+_INITIAL_INNERTUBE_CLIENT_CONTEXT = {
+    "clientName": "WEB",
+    "clientVersion": "2.20241121.01.00",
+    "hl": "en",
+}
+_INITIAL_INNERTUBE_CLIENT_HEADERS = {
+    "X-YouTube-Client-Name": "1",
+    "X-YouTube-Client-Version": "2.20241121.01.00",
+    "Origin": "https://www.youtube.com",
+    "content-type": "application/json",
+}
+
 
 async def extract_player_response(url: str) -> YTPlayerResponse:
     response_extractor = PlayerResponseExtractor()
@@ -179,9 +192,7 @@ async def extract_yt_cfg(url: str) -> YTCFG:
 
 async def _get_live_stream_status(video_id: str) -> YTPlayerHeartbeatResponse:
     post_dict: dict = {
-        "context": {
-            "client": {"clientName": "WEB", "clientVersion": "2.20241121.01.00", "hl": "en"}
-        },
+        "context": {"client": _INITIAL_INNERTUBE_CLIENT_CONTEXT},
         "heartbeatRequestParams": {
             "heartbeatChecks": ["HEARTBEAT_CHECK_TYPE_LIVE_STREAM_STATUS"]
         },
@@ -197,12 +208,7 @@ async def _get_live_stream_status(video_id: str) -> YTPlayerHeartbeatResponse:
     status_queue = status_queue_ctx.get()
     cookies = _cookies_from_filepath()
     async with httpx.AsyncClient(cookies=cookies) as client:
-        headers = {
-            "X-YouTube-Client-Name": "1",
-            "X-YouTube-Client-Version": "2.20241121.01.00",
-            "Origin": "https://www.youtube.com",
-            "content-type": "application/json",
-        }
+        headers = _INITIAL_INNERTUBE_CLIENT_HEADERS
 
         auth = _build_auth_from_cookies(cookies, user_session_id=ytcfg.user_session_id)
         if auth:
@@ -239,9 +245,7 @@ async def _get_web_player_response(video_id: str) -> YTPlayerResponse | None:
     # the DASH manifest via web client expires every 30 seconds as of 2024-08-08
     # so now we masquerade as the android client and extract the manifest there
     post_dict: dict = {
-        "context": {
-            "client": {"clientName": "WEB", "clientVersion": "2.20241121.01.00", "hl": "en"}
-        },
+        "context": {"client": _INITIAL_INNERTUBE_CLIENT_CONTEXT},
         "playbackContext": {"contentPlaybackContext": {"html5Preference": "HTML5_PREF_WANTS"}},
     }
     post_dict["videoId"] = video_id
@@ -258,12 +262,7 @@ async def _get_web_player_response(video_id: str) -> YTPlayerResponse | None:
     status_queue = status_queue_ctx.get()
     cookies = _cookies_from_filepath()
     async with httpx.AsyncClient(cookies=cookies) as client:
-        headers = {
-            "X-YouTube-Client-Name": "1",
-            "X-YouTube-Client-Version": "2.20241121.01.00",
-            "Origin": "https://www.youtube.com",
-            "content-type": "application/json",
-        }
+        headers = _INITIAL_INNERTUBE_CLIENT_HEADERS
 
         auth = _build_auth_from_cookies(cookies, user_session_id=ytcfg.user_session_id)
         if auth:
