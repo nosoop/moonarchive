@@ -712,13 +712,15 @@ async def frag_iterator(
                 return
 
         assert resp.streaming_data
+        assert resp.streaming_data.dash_manifest_id
+        if current_manifest_id != resp.streaming_data.dash_manifest_id:
+            # manifest ID differs; we're done
+            return
+
         # it is actually possible for a format to disappear from an updated manifest without
         # incrementing the ID - likely to be inconsistencies between servers
         # this may only apply to the android response
-        if (
-            itag not in manifest.format_urls
-            and current_manifest_id == resp.streaming_data.dash_manifest_id
-        ):
+        if itag not in manifest.format_urls:
             # select a new format
             # IMPORTANT: we don't reset the fragment counter here to minimize the chance of the
             # stream going unavailable mid-download
@@ -730,11 +732,6 @@ async def frag_iterator(
                     current_manifest_id, selector.major_type, preferred_format
                 )
             )
-
-        assert resp.streaming_data.dash_manifest_id
-        if current_manifest_id != resp.streaming_data.dash_manifest_id:
-            # manifest ID differs; we're done
-            return
 
 
 @dataclasses.dataclass
