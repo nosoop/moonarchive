@@ -93,13 +93,18 @@ def main() -> None:
         "--max-video-resolution",
         type=int,
         default=None,
-        help="Maximum resolution for video streams (best resolution if omitted)",
+        help="Maximum video resolution that the tool is permitted to download.  This filters "
+        "on the lesser dimension (the value checked for 1920x1080 and 1080x1920 is 1080).  "
+        "If no value is provided, the tool will attempt to download the highest resolution "
+        "available.",
     )
     parser.add_argument(
         "--vp9",
         action=argparse.BooleanOptionalAction,
         dest="prioritize_vp9",
-        help="Prioritizes vp9 over h264 when both codecs are present at a given resolution",
+        help="Prioritizes vp9 over h264 when both codecs are present at a target resolution.  "
+        "If h264 is not available at the resolution target, vp9 is always selected regardless "
+        "of this option's presence.",
         default=False,
     )
     parser.add_argument(
