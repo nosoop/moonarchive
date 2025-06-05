@@ -18,6 +18,8 @@ class YTCFG(YTJSONStruct, kw_only=True):
     visitor_data: str = msgspec.field(name="VISITOR_DATA")
     user_session_id: str | None = msgspec.field(name="USER_SESSION_ID", default=None)
 
+    # DATASYNC_ID appears to be f"{DELEGATED_SESSION_ID}||{USER_SESSION_ID}"
+
     def to_headers(self) -> dict[str, str]:
         headers = {
             "X-YouTube-Client-Name": str(self.innertube_ctx_client_name),
