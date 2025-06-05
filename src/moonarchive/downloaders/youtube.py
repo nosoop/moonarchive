@@ -142,6 +142,9 @@ _INITIAL_INNERTUBE_CLIENT_HEADERS = {
 
 
 async def extract_player_response(url: str) -> YTPlayerResponse:
+    """
+    Scrapes a given YouTube URL for the initial player response.
+    """
     response_extractor = PlayerResponseExtractor()
     cookies = _cookies_from_filepath()
     status_queue = status_queue_ctx.get()
@@ -242,8 +245,9 @@ async def _get_live_stream_status(video_id: str) -> YTPlayerHeartbeatResponse:
 
 
 async def _get_web_player_response(video_id: str) -> YTPlayerResponse | None:
-    # the DASH manifest via web client expires every 30 seconds as of 2024-08-08
-    # so now we masquerade as the android client and extract the manifest there
+    """
+    Obtains the player state for the given video ID.
+    """
     post_dict: dict = {
         "context": {"client": _INITIAL_INNERTUBE_CLIENT_CONTEXT},
         "playbackContext": {"contentPlaybackContext": {"html5Preference": "HTML5_PREF_WANTS"}},
@@ -361,7 +365,7 @@ class FormatSelector:
     Class to select a YouTube substream for downloading.
 
     This is invoked to determine an appropriate format for the user, as the availability of
-    formats may change if the stream broadcasts under a new manifest ID.
+    formats may change between manifests.
     """
 
     major_type: YTPlayerMediaType
@@ -780,7 +784,7 @@ async def stream_downloader(
             last_frag_dimensions = (0, 0)
             outnum = 0
         if selector.major_type == YTPlayerMediaType.VIDEO:
-            # analyze fragment for dimension change mid-manifest
+            # analyze fragment for dimension change mid-broadcast
             with av.open(frag.buffer, "r") as container:
                 vf = next(await asyncio.to_thread(container.decode, video=0))
                 assert type(vf) == av.VideoFrame
@@ -1205,14 +1209,14 @@ async def _run(args: "YouTubeDownloader") -> None:
 
         mux_output_name = f"{output_basename}-{manifest_id}.mp4"
         if len(manifest_outputs) == 1:
-            # unique manifest, so output video ID instead (matching ytarchive behavior)
+            # single broadcast, so output video ID instead (matching ytarchive behavior)
             mux_output_name = f"{output_basename}-{video_id}.mp4"
 
         output_paths[outdir / mux_output_name] = output_mux_file
         if proc.returncode == 0:
             intermediate_file_deletes.extend(output_stream_paths)
 
-    # if we only have one manifest with an unexpected output count, the logs will never be
+    # if we only have one broadcast with an unexpected output count, the logs will never be
     # rendered in the CLI - yield to other tasks here just in case
     await asyncio.sleep(0)
 
@@ -1225,8 +1229,9 @@ async def _run(args: "YouTubeDownloader") -> None:
         outdir.mkdir(parents=True, exist_ok=True)
 
         # move files to their final location
-        # file paths may be too long on some filesystems like zfs, so we process the longest
-        # first then bail if it throws
+        #
+        # file paths may be too long on some filesystems; to reduce the possibility of
+        # partially-complete moves we process the longest first then bail if it throws
         for dest in sorted(output_paths, key=lambda p: len(str(p.resolve())), reverse=True):
             src = output_paths[dest]
             await asyncio.to_thread(shutil.move, src, dest)
