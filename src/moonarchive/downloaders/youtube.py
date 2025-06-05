@@ -19,7 +19,7 @@ import urllib.request
 from contextvars import ContextVar
 from http.cookiejar import MozillaCookieJar
 from types import ModuleType
-from typing import AsyncIterator, Protocol, Type
+from typing import AsyncIterator, Iterable, Protocol, Type, TypeVar
 
 import av
 import httpx
@@ -437,8 +437,7 @@ class WrittenFragmentInfo(msgspec.Struct):
 
 
 async def frag_iterator(
-    resp: YTPlayerResponse,
-    selector: FormatSelector,
+    resp: YTPlayerResponse, selector: FormatSelector, start_seq: int = 0
 ) -> AsyncIterator[FragmentInfo]:
     # yields fragment information
     # this should refresh the manifest as needed and yield the next available fragment
@@ -461,7 +460,7 @@ async def frag_iterator(
     if not timeout:
         raise ValueError("itag does not have a target duration set")
 
-    cur_seq = 0
+    cur_seq = start_seq
     max_seq = 0
 
     current_manifest_id = resp.streaming_data.dash_manifest_id
@@ -763,6 +762,101 @@ async def status_handler(
             pass
 
 
+class ResumeState(msgspec.Struct):
+    start_seq: int = 0
+    outnum: int = 0
+    last_frag_dimensions: tuple[int, int] = (0, 0)
+
+
+T = TypeVar("T")
+
+
+def _decode_possibly_malformed_fragdata(s: str, type: T) -> Iterable[T]:
+    """
+    Decodes a potentially-malformed fragment list file.  The fragment list file may be malformed
+    if the system dies while in the process of appending to the file.
+    """
+    jdec = json.JSONDecoder()
+    try:
+        yield from (msgspec.convert(jdec.decode(line), type) for line in s.splitlines())
+    except json.decoder.JSONDecodeError:
+        pass
+
+
+async def _check_resume_state(
+    output_directory: pathlib.Path, manifest_id: str, media_type: YTPlayerMediaType
+) -> ResumeState:
+    """
+    Attempts to resume an existing download.
+    This function also restores the raw stream and fragment information to a known good state.
+    """
+
+    # get the last stream that was touched, in the event that we have multiple files for a given
+    # manifest ID
+    streams = sorted(
+        output_directory.glob(
+            f"{manifest_id}#*.f*.ts"
+            if media_type == YTPlayerMediaType.VIDEO
+            else f"{manifest_id}.f*.ts"
+        ),
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    )
+    if not streams:
+        return ResumeState()
+
+    raw_stream, *_ = streams
+
+    fragdata_f = raw_stream.with_suffix(".fragdata.txt")
+    if not fragdata_f:
+        return ResumeState()
+
+    fraglist = list(
+        _decode_possibly_malformed_fragdata(fragdata_f.read_text(), WrittenFragmentInfo)
+    )
+    if not fraglist:
+        return ResumeState()
+
+    file_size = raw_stream.stat().st_size
+    total_frag_size = sum(frag.length for frag in fraglist)
+
+    if file_size > total_frag_size:
+        # we always write to the raw stream file before appending to the fragment data file,
+        # so we expect that the computed total fragment size is always less than or equal to the
+        # raw stream size; as such we can truncate
+        with raw_stream.open("ab") as rs:
+            rs.truncate(total_frag_size)
+    elif file_size < total_frag_size:
+        # this case would be hit if the raw stream was truncated somehow
+        # this is unlikely to happen without the stream being modified externally
+        raise RuntimeError("Raw stream is smaller than recorded written fragment total")
+
+    with fragdata_f.open("wb") as fragdata:
+        # fix up fragment data in case the file is malformed
+        for payload in fraglist:
+            fragdata.write(msgspec.json.encode(payload) + b"\n")
+
+    last_fragment = fraglist[-1]
+    resume_seq = last_fragment.cur_seq + 1
+
+    if media_type != YTPlayerMediaType.VIDEO:
+        return ResumeState(resume_seq)
+
+    # for videos we need additional information
+    # TODO: maybe write this information during the download?
+    last_frag_dimensions = (0, 0)
+    with raw_stream.open("rb") as rs:
+        rs.seek(total_frag_size - last_fragment.length)
+        last_frag_buffer = io.BytesIO(rs.read())
+    with av.open(last_frag_buffer, "r") as container:
+        vf = next(await asyncio.to_thread(container.decode, video=0))
+        assert type(vf) == av.VideoFrame
+        last_frag_dimensions = vf.width, vf.height
+
+    # given N output streams, the last outnum should be (N - 1)
+    return ResumeState(resume_seq, len(streams) - 1, last_frag_dimensions)
+
+
 async def stream_downloader(
     resp: YTPlayerResponse, selector: FormatSelector, output_directory: pathlib.Path
 ) -> dict[str, set[pathlib.Path]]:
@@ -770,13 +864,29 @@ async def stream_downloader(
     # this is used later to determine which files to mux together
     manifest_outputs = collections.defaultdict(set)
 
-    last_manifest_id = None
-    last_frag_dimensions = (0, 0)
-    outnum = 0
+    if not resp.streaming_data:
+        raise RuntimeError("Missing streaming data in player response")
+    if not resp.streaming_data.dash_manifest_id:
+        raise RuntimeError("Missing manifest ID in player response")
+
+    last_manifest_id = resp.streaming_data.dash_manifest_id
+
+    resume = await _check_resume_state(output_directory, last_manifest_id, selector.major_type)
+
+    last_frag_dimensions = resume.last_frag_dimensions
+    outnum = resume.outnum
 
     status_queue = status_queue_ctx.get()
 
-    async for frag in frag_iterator(resp, selector):
+    if resume.start_seq:
+        status_queue.put_nowait(
+            messages.StringMessage(
+                f"Resuming existing {selector.major_type} download for {last_manifest_id} "
+                f"from sequence {resume.start_seq}"
+            )
+        )
+
+    async for frag in frag_iterator(resp, selector, resume.start_seq):
         output_prefix = f"{frag.manifest_id}.f{frag.itag}"
 
         if frag.manifest_id != last_manifest_id:
