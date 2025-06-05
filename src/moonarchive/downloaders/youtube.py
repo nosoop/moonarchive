@@ -130,12 +130,12 @@ YTCFGExtractor = create_json_object_extractor('ytcfg.set({"CLIENT')
 # initial innertube data; these should be replaced by the results from extract_yt_cfg
 _INITIAL_INNERTUBE_CLIENT_CONTEXT = {
     "clientName": "WEB",
-    "clientVersion": "2.20241121.01.00",
+    "clientVersion": "2.20250516.01.00",
     "hl": "en",
 }
 _INITIAL_INNERTUBE_CLIENT_HEADERS = {
     "X-YouTube-Client-Name": "1",
-    "X-YouTube-Client-Version": "2.20241121.01.00",
+    "X-YouTube-Client-Version": "2.20250516.01.00",
     "Origin": "https://www.youtube.com",
     "content-type": "application/json",
 }
