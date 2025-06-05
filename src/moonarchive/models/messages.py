@@ -56,6 +56,7 @@ class ExtractingPlayerResponseMessage(BaseMessage, tag="extracting-player-respon
 
 class DownloadStreamJobEndedMessage(BaseMessage, tag="download-stream-ended"):
     media_type: str
+    manifest_id: str | None = None
 
 
 class StreamMuxMessage(BaseMessage, tag="stream-mux"):

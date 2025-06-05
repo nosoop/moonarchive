@@ -823,7 +823,10 @@ async def stream_downloader(
                 frag.buffer.getbuffer().nbytes,
             )
         )
-    status_queue.put_nowait(messages.DownloadStreamJobEndedMessage(selector.major_type))
+    for broadcast_id in manifest_outputs.keys():
+        status_queue.put_nowait(
+            messages.DownloadStreamJobEndedMessage(selector.major_type, broadcast_id)
+        )
     return manifest_outputs
 
 
