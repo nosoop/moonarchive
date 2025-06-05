@@ -133,7 +133,8 @@ annotations.
 ## Features
 
 - Detection of split broadcasts (updated manifests).  See [ytarchive#56][].  tl;dr in certain
-situations, ytarchive will appear to stall if the streamer changes certain settings mid-stream.
+situations, ytarchive will not reset its sequence counter when attempting to retrieve fragments
+on a new broadcast, appearing to stall.
     - moonarchive, in its current form, will mux out an individual file per broadcast (assuming
     no other broadcast issues).  In theory it's possible to precisely merge broadcasts to one
     file, but this requires processing the raw file's internal segment metadata added by YouTube
