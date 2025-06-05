@@ -147,11 +147,6 @@ this does not generate a new manifest, and resulting naively muxed files end up 
     how to process the result (video streams will be split at resolution change boundaries,
     while the audio streams will span the length of the broadcast).
 
-Important note on cookie authentication:  YouTube frequently rotates cookies; while a given file
-will work during the start of a stream, it will need to be updated whenever a player request is
-made (since you're authenticated with proof-of-origin, this happens every 6 hours, or if the
-stream goes offline and needs to be rechecked).
-
 [ytarchive#56]: https://github.com/Kethsar/ytarchive/issues/56
 
 ### Proof-of-origin downloads
@@ -181,11 +176,16 @@ Pass one of the following:
 - `--po-token ${POTOKEN} --cookies ${COOKIE_FILE}` for logged in contexts (member streams, etc.)
 
 It's not really clear how often you need to obtain a new proof-of-origin token.  The linked
-guide says 12 hours, but my personal experience on a residential connection has both visitor
-data and guest cookies lasting more than a month with their corresponding tokens.
+guide says 12 hours, but my personal experience on a residential connection has visitor data
+remaining valid for 180 days, with their respective tokens working for the same amount of time.
+(Once the visitor data expires, no tokens generated from that information will work, with
+YouTube behaving as if the token was not present at all.)
 
 It's likely that tokens linked to an actual user will be rotated out sooner, though I haven't
 been able to test that myself.
+
+Proof-of-origin is very much an evolving thing, so my personal observations at a given time may
+differ from that of others.
 
 [obtain a token]: https://github.com/yt-dlp/yt-dlp/wiki/PO-Token-Guide
 
