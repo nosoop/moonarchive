@@ -253,9 +253,6 @@ async def _get_web_player_response(video_id: str) -> YTPlayerResponse | None:
         "playbackContext": {"contentPlaybackContext": {"html5Preference": "HTML5_PREF_WANTS"}},
     }
     post_dict["videoId"] = video_id
-    po_token = po_token_ctx.get()
-    if po_token:
-        post_dict["serviceIntegrityDimensions"] = {"poToken": po_token}
 
     ytcfg = ytcfg_ctx.get()
     if not ytcfg:
