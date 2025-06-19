@@ -1,5 +1,8 @@
 #!/usr/bin/python3
 
+import collections
+import functools
+
 import colorama.ansi
 import msgspec
 
@@ -30,21 +33,32 @@ def _sizeof_fmt(num: int | float, suffix: str = "B") -> str:
 
 class YTArchiveMessageHandler(BaseMessageHandler, tag="ytarchive"):
     # outputs a ytarchive-style message
-    video_seq: int = 0
-    audio_seq: int = 0
-    max_seq: int = 0
-    total_downloaded: int = 0
+
+    class BroadcastState(msgspec.Struct):
+        video_seq: int = 0
+        audio_seq: int = 0
+        max_seq: int = 0
+        total_downloaded: int = 0
+
+        @property
+        def human_total_size(self) -> str:
+            return _sizeof_fmt(self.total_downloaded)
+
     current_manifest: str = ""
     last_stream_info: msgtypes.StreamInfoMessage | None = None
+    broadcasts: dict[str, BroadcastState] = msgspec.field(
+        default_factory=functools.partial(collections.defaultdict, BroadcastState)
+    )
 
     def print_frag_status_update(self) -> None:
         # sequence numbers are offset by one to match ytarchive output
+        broadcast = self.broadcasts[self.current_manifest]
         print(
             f"\r{colorama.ansi.clear_line()}"
-            f"Video Fragments: {self.video_seq + 1}; "
-            f"Audio Fragments: {self.audio_seq + 1}; "
-            f"Max Fragments: {self.max_seq + 1}; "
-            f"Total Downloaded: {self.human_total_size}; "
+            f"Video Fragments: {broadcast.video_seq + 1}; "
+            f"Audio Fragments: {broadcast.audio_seq + 1}; "
+            f"Max Fragments: {broadcast.max_seq + 1}; "
+            f"Total Downloaded: {broadcast.human_total_size}; "
             f"Manifest: {self.current_manifest}",
             end="",
             flush=True,
@@ -55,18 +69,17 @@ class YTArchiveMessageHandler(BaseMessageHandler, tag="ytarchive"):
             case msgtypes.StringMessage():
                 print(msg.text)
             case msgtypes.FragmentMessage():
-                self.max_seq = max(self.max_seq, msg.max_fragments)
+                broadcast = self.broadcasts[msg.manifest_id]
+                broadcast.max_seq = max(broadcast.max_seq, msg.max_fragments)
                 if msg.media_type == "audio":
-                    self.audio_seq = msg.current_fragment
+                    broadcast.audio_seq = msg.current_fragment
                 elif msg.media_type == "video":
-                    self.video_seq = msg.current_fragment
+                    broadcast.video_seq = msg.current_fragment
 
                 # this size matches ytarchive@1790a76 (0.4.0)
                 # it probably diverges at ytarchive@3fb0ba0, which we currently don't implement
                 # (both ffmpeg 5.0 and 7.0 have no fatal issues with such fmp4 files)
-                self.total_downloaded += msg.fragment_size
-                if self.current_manifest != msg.manifest_id:
-                    self.max_seq = 0
+                broadcast.total_downloaded += msg.fragment_size
                 self.current_manifest = msg.manifest_id
                 self.print_frag_status_update()
             case msgtypes.DownloadStreamJobEndedMessage():
@@ -116,10 +129,6 @@ class YTArchiveMessageHandler(BaseMessageHandler, tag="ytarchive"):
                     print(f"- '{dest}' (from '{src}')")
             case _:
                 pass
-
-    @property
-    def human_total_size(self) -> str:
-        return _sizeof_fmt(self.total_downloaded)
 
 
 CLIMessageHandlers = JSONLMessageHandler | YTArchiveMessageHandler
