@@ -27,14 +27,14 @@ import msgspec
 
 from ...models import messages as messages
 from ...models.ffmpeg import FFMPEGProgress
-from ...models.youtube_config import YTCFG
-from ...models.youtube_player import (
+from ...output import BaseMessageHandler
+from .config import YTCFG
+from .player import (
     YTPlayerAdaptiveFormats,
     YTPlayerHeartbeatResponse,
     YTPlayerMediaType,
     YTPlayerResponse,
 )
-from ...output import BaseMessageHandler
 
 browser_cookie3: ModuleType | None = None
 try:

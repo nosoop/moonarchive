@@ -1,8 +1,10 @@
 #!/usr/bin/python3
 
-import msgspec
+import warnings
 
+# compatibility shim for tools using moonarchive
+from ..downloaders.youtube.model import YTJSONStruct as YTJSONStruct
 
-class YTJSONStruct(msgspec.Struct, rename="camel"):
-    # class to handle renaming fields to match those present in the struct
-    pass
+warnings.warn(
+    "Module has been moved to moonarchive.downloaders.youtube.model", DeprecationWarning
+)

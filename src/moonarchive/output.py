@@ -6,8 +6,8 @@ import functools
 import colorama.ansi
 import msgspec
 
+from .downloaders.youtube.player import YTPlayerMediaType
 from .models import messages as msgtypes
-from .models.youtube_player import YTPlayerMediaType
 
 
 class BaseMessageHandler(msgspec.Struct):
