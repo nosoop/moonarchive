@@ -193,7 +193,9 @@ async def extract_yt_cfg(url: str) -> YTCFG:
         return msgspec.convert(response_extractor.result, type=YTCFG)  # type: ignore
 
 
-async def _get_live_stream_status(video_id: str) -> YTPlayerHeartbeatResponse:
+async def _get_live_stream_status(
+    video_id: str, *, heartbeat_token: str | None
+) -> YTPlayerHeartbeatResponse:
     post_dict: dict = {
         "context": {"client": _INITIAL_INNERTUBE_CLIENT_CONTEXT},
         "heartbeatRequestParams": {
@@ -201,6 +203,9 @@ async def _get_live_stream_status(video_id: str) -> YTPlayerHeartbeatResponse:
         },
     }
     post_dict["videoId"] = video_id
+
+    if heartbeat_token:
+        post_dict["heartbeatToken"] = heartbeat_token
 
     ytcfg = ytcfg_ctx.get()
     if not ytcfg:
@@ -1011,6 +1016,10 @@ async def _run(args: "YouTubeDownloader") -> None:
     video_id = resp.video_details.video_id if resp.video_details else None
     heartbeat = YTPlayerHeartbeatResponse(playability_status=resp.playability_status)
 
+    heartbeat_token: str | None = (
+        resp.heartbeat_params.heartbeat_token if resp.heartbeat_params else None
+    )
+
     while not resp.streaming_data:
         if heartbeat.playability_status.status == "OK":
             resp = await extract_player_response(args.url)
@@ -1070,7 +1079,9 @@ async def _run(args: "YouTubeDownloader") -> None:
         await asyncio.sleep(seconds_wait)
         if video_id:
             try:
-                heartbeat = await _get_live_stream_status(video_id)
+                heartbeat = await _get_live_stream_status(
+                    video_id, heartbeat_token=heartbeat_token
+                )
                 continue
             except RuntimeError:
                 pass
@@ -1167,7 +1178,7 @@ async def _run(args: "YouTubeDownloader") -> None:
             vidsel.codec = "vp9"
 
         while True:
-            heartbeat = await _get_live_stream_status(video_id)
+            heartbeat = await _get_live_stream_status(video_id, heartbeat_token=heartbeat_token)
             playability_status = heartbeat.playability_status
 
             # spin up tasks for any new broadcasts seen

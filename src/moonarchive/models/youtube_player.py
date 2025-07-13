@@ -238,6 +238,11 @@ class YTPlayerMicroformat(YTJSONStruct):
         return getattr(self.player_microformat_renderer, name)
 
 
+class YTPlayerHeartbeatParams(YTJSONStruct):
+    # passed in whenever a heartbeat request is made
+    heartbeat_token: str | None = None
+
+
 class YTPlayerHeartbeatResponse(YTJSONStruct):
     playability_status: YTPlayerPlayabilityStatus
     stop_heartbeat: bool | None = False
@@ -253,5 +258,8 @@ class YTPlayerResponse(YTJSONStruct):
 
     # this is not present on streams happening in the future
     streaming_data: Optional[YTPlayerStreamingData] = None
+
+    # present on membership-only streams
+    heartbeat_params: YTPlayerHeartbeatParams | None = None
 
     stop_heartbeat: bool | None = False
