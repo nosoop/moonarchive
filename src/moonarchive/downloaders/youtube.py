@@ -333,11 +333,13 @@ def _build_auth_from_cookies(
     if not current_dt:
         current_dt = datetime.datetime.now(tz=datetime.UTC)
 
-    sapisid_cookie = cookies.get("__Secure-3PAPISID") or cookies.get("SAPISID")
+    sapisid_cookie = cookies.get("__Secure-3PAPISID", domain=".youtube.com") or cookies.get(
+        "SAPISID", domain=".youtube.com"
+    )
     if not sapisid_cookie:
         return None
     if not cookies.get("SAPISID"):
-        cookies.set("SAPISID", sapisid_cookie, ".youtube.com")
+        cookies.set("SAPISID", sapisid_cookie, domain=".youtube.com")
 
     extra_data = {}
     if user_session_id:
