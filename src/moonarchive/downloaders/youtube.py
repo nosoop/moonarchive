@@ -1288,6 +1288,7 @@ async def _run(args: "YouTubeDownloader") -> None:
             "-progress",
             "-",
             "-nostdin",
+            "-xerror",
             "-y",
         ]
 
