@@ -64,6 +64,17 @@ class StreamMuxMessage(BaseMessage, tag="stream-mux"):
     manifests: list[str]
 
 
+class StreamMuxFailureMessage(BaseMessage, tag="stream-mux-failure"):
+    manifest_id: str
+    staging_files: set[pathlib.Path]
+    reason: str | None = None
+    ffmpeg_exit_code: int | None = None
+    """
+    Error code produced by ffmpeg.
+    https://github.com/FFmpeg/FFmpeg/blob/a218cafe4d3be005ab0c61130f90db4d21afb5db/libavutil/error.c#L37-L107
+    """
+
+
 class StreamMuxProgressMessage(BaseMessage, tag="stream-mux-progress"):
     manifest_id: str
     progress: FFMPEGProgress

@@ -616,8 +616,13 @@ async def _run(args: "YouTubeDownloader") -> None:
             status.queue.put_nowait(
                 messages.StringMessage("This will need to be manually processed")
             )
-            # TODO: we need to dispatch a message on unsuccessful remuxes so other tools can
-            # handle this case
+            status.queue.put_nowait(
+                messages.StreamMuxFailureMessage(
+                    manifest_id,
+                    output_stream_paths,
+                    reason="Non-standard number of output streams; requires manual processing",
+                )
+            )
             continue
 
         # raising the log level to 'fatal' instead of 'warning' suppresses MOOV atom warnings
@@ -680,9 +685,20 @@ async def _run(args: "YouTubeDownloader") -> None:
             # single broadcast, so output video ID instead (matching ytarchive behavior)
             mux_output_path = outtmpl.to_path(tmplvars, suffix=".mp4")
 
-        output_paths[outdir / mux_output_path] = output_mux_file
         if proc.returncode == 0:
+            output_paths[outdir / mux_output_path] = output_mux_file
             intermediate_file_deletes.extend(output_stream_paths)
+        else:
+            if output_mux_file.exists():
+                output_mux_file.unlink()
+            status.queue.put_nowait(
+                messages.StreamMuxFailureMessage(
+                    manifest_id,
+                    output_stream_paths,
+                    reason=f"ffmpeg terminated with error code {proc.returncode}",
+                    ffmpeg_exit_code=proc.returncode,
+                )
+            )
 
     # if we only have one broadcast with an unexpected output count, the logs will never be
     # rendered in the CLI - yield to other tasks here just in case
