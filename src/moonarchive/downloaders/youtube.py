@@ -338,7 +338,7 @@ def _build_auth_from_cookies(
     )
     if not sapisid_cookie:
         return None
-    if not cookies.get("SAPISID"):
+    if not cookies.get("SAPISID", domain=".youtube.com"):
         cookies.set("SAPISID", sapisid_cookie, domain=".youtube.com")
 
     extra_data = {}
