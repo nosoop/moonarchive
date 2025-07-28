@@ -41,11 +41,11 @@ changes to those projects instead.)
 
 - `moonarchive` is tested against Python 3.11.  The installation will bring in a number of other
 third-party packages.
-- [ffmpeg][] is required for creating the final file.  This is not installed automatically.
-On Windows, you can use `winget install ffmpeg`; for other platforms refer to your package
-manager.
+- [ffmpeg 7.0 or newer][] is required for creating the final file.  This is not installed
+automatically.  On Windows, you can use `winget install ffmpeg`; for other platforms refer to
+your package manager.
 
-[ffmpeg]: https://ffmpeg.org/download.html
+[ffmpeg 7.0 or newer]: https://ffmpeg.org/download.html
 
 ### via pip
 
