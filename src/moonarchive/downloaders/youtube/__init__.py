@@ -615,6 +615,7 @@ async def _run(args: "YouTubeDownloader") -> None:
             "-progress",
             "-",
             "-nostdin",
+            "-xerror",
             "-y",
         ]
 
@@ -624,6 +625,8 @@ async def _run(args: "YouTubeDownloader") -> None:
                 "0",
                 "-thread_queue_size",
                 "1024",
+                "-bsf",
+                "setts=dts='max(PREV_OUTDTS+1,DTS)'",  # prevent non-monotonic DTS errors
                 "-i",
                 str(output_stream_path.absolute()),
             )
