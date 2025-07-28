@@ -35,6 +35,7 @@ class FFMPEGRunner:
             "-progress",
             "-",
             "-nostdin",
+            "-xerror",
             "-y",
         ]
 
@@ -47,6 +48,8 @@ class FFMPEGRunner:
                 "0",
                 "-thread_queue_size",
                 "1024",
+                "-bsf",
+                "setts=dts='max(PREV_OUTDTS+1,DTS)'",  # prevent non-monotonic DTS errors
                 "-i",
                 str(input_file.absolute()),
             )
