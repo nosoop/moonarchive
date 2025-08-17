@@ -2,7 +2,6 @@
 
 import asyncio
 import collections
-import dataclasses
 import datetime
 import io
 import itertools
@@ -35,7 +34,7 @@ from ._innertube import (
     visitor_data_ctx,
     ytcfg_ctx,
 )
-from ._status import status_queue_ctx
+from ._status import StatusManager, status_handler, status_queue_ctx
 from .player import (
     YTPlayerHeartbeatResponse,
     YTPlayerMediaType,
@@ -62,31 +61,6 @@ def _string_byte_trim(input: str, length: int) -> str:
 class WrittenFragmentInfo(msgspec.Struct):
     cur_seq: int
     length: int
-
-
-@dataclasses.dataclass
-class StatusManager:
-    queue: asyncio.Queue
-
-    # bind the lifetime of the manager to the task creating it
-    parent_task: asyncio.Task
-
-    def __init__(self):
-        self.queue = asyncio.Queue()
-        self.parent_task = asyncio.current_task()
-
-
-async def status_handler(
-    handlers: list[BaseMessageHandler],
-    status: StatusManager,
-) -> None:
-    while not status.parent_task.done() or not status.queue.empty():
-        try:
-            message = await asyncio.wait_for(status.queue.get(), timeout=1.0)
-            for handler in handlers:
-                await handler.handle_message(message)
-        except TimeoutError:
-            pass
 
 
 class ResumeState(msgspec.Struct):
