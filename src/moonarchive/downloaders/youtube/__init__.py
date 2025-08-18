@@ -20,7 +20,13 @@ import msgspec
 from ...models import messages as messages
 from ...models.ffmpeg import FFMPEGProgress
 from ...output import BaseMessageHandler
-from ...util.paths import _string_byte_trim, sanitize_table
+from ...util.paths import (
+    _DEFAULT_OUTPUT_FORMAT,
+    OutputPathTemplate,
+    OutputPathTemplateVars,
+    _string_byte_trim,
+    sanitize_table,
+)
 from ._dash import frag_iterator, num_parallel_downloads_ctx
 from ._format import FormatSelector
 from ._innertube import _build_auth_from_cookies as _build_auth_from_cookies
@@ -383,6 +389,35 @@ async def _run(args: "YouTubeDownloader") -> None:
     workdir = args.staging_directory or pathlib.Path(".")
     workdir.mkdir(parents=True, exist_ok=True)
 
+    # TODO: split this template string by parents + basename?
+    outtmpl = args.output_template or _DEFAULT_OUTPUT_FORMAT
+
+    tmplvars = OutputPathTemplateVars(
+        title=resp.video_details.title.translate(sanitize_table),
+        id=resp.video_details.video_id,
+        video_id=video_id,
+        channel_id=resp.video_details.channel_id,
+        channel=resp.video_details.author.translate(sanitize_table),
+    )
+    tmplvars.start_datetime = resp.microformat.live_broadcast_details.start_datetime
+
+    # calculate our maximum allowed title length from a filename without the title with a large
+    # broadcast ID
+    test_outtmpl_path = outtmpl.to_path(
+        tmplvars, title="", id="xxxxxxxxxxx.00", suffix=".description"
+    )
+
+    outtmpl_ident = outtmpl.get_identifiers()
+    if "id" not in outtmpl_ident:
+        # forbid templates without 'id', since it will cause ambiguity in multi-broadcast files
+        raise ValueError("'id' missing from output template")
+    elif test_outtmpl_path.is_absolute():
+        raise ValueError(
+            "Output templates containing absolute paths are not allowed. "
+            "Use --output-directory to set the base path, then specify a relative path "
+            "template using --output-template."
+        )
+
     outdir = args.output_directory or pathlib.Path()
 
     # derive filename from stream title at time of starting the download
@@ -390,32 +425,23 @@ async def _run(args: "YouTubeDownloader") -> None:
     # so we do not need to check for a '-' prefix
     output_basename = resp.video_details.title.translate(sanitize_table)
 
-    # https://en.wikipedia.org/wiki/Comparison_of_file_systems#Limits
-    # modern filesystems commonly have a maximum filename length of 255 bytes with higher limits on paths
-    # our default filename convention is also constrained by the following:
-    # - 12 bytes for video ID and separator '-'
-    # - 3 bytes for multi-broadcast stream extension '.00'; assume possibility of two-digit broadcast IDs
-    # - 12 bytes for longest possible file extension '.description'
-    #
-    # given this, 228 bytes seems like the absolute hard limit, but have a margin of error
-    #
-    # however upon further testing, it's observed that some applications have even shorter
-    # filename (basename?) length constraints like 240, so the revised hard limit is 213
-    trunc_basename = _string_byte_trim(output_basename, 192)
+    tmplvars.title = _string_byte_trim(
+        output_basename, outtmpl.get_max_title_byte_length(tmplvars)
+    )
 
     # output_paths[dest] = src
     output_paths = {}
 
-    if output_basename != trunc_basename:
+    if output_basename != tmplvars.title:
         # save original title
-        output_basename = trunc_basename
+        output_basename = tmplvars.title
         title_path = workdir / f"{video_id}.title.txt"
         title_path.write_text(
             resp.video_details.title,
             encoding="utf8",
             newline="\n",
         )
-        output_paths[outdir / f"{output_basename}-{video_id}.title.txt"] = title_path
+        output_paths[outdir / outtmpl.to_path(tmplvars, suffix=".title.txt")] = title_path
         status.queue.put_nowait(messages.StringMessage("Output filename will be truncated"))
 
     if args.write_description:
@@ -425,7 +451,7 @@ async def _run(args: "YouTubeDownloader") -> None:
             encoding="utf8",
             newline="\n",
         )
-        output_paths[outdir / f"{output_basename}-{video_id}{desc_path.suffix}"] = desc_path
+        output_paths[outdir / outtmpl.to_path(tmplvars, suffix=desc_path.suffix)] = desc_path
 
     if args.write_thumbnail:
         if resp.microformat and resp.microformat.thumbnails:
@@ -437,7 +463,7 @@ async def _run(args: "YouTubeDownloader") -> None:
             thumb_dest_path = (workdir / video_id).with_suffix(thumbnail_url_path.suffix)
             r = httpx.get(thumbnail_url)
             thumb_dest_path.write_bytes(r.content)
-            output_paths[outdir / f"{output_basename}-{video_id}{thumb_dest_path.suffix}"] = (
+            output_paths[outdir / outtmpl.to_path(tmplvars, suffix=thumb_dest_path.suffix)] = (
                 thumb_dest_path
             )
 
@@ -598,12 +624,12 @@ async def _run(args: "YouTubeDownloader") -> None:
 
         await proc.wait()
 
-        mux_output_name = f"{output_basename}-{manifest_id}.mp4"
+        mux_output_path = outtmpl.to_path(tmplvars, id=manifest_id, suffix=".mp4")
         if len(manifest_outputs) == 1:
             # single broadcast, so output video ID instead (matching ytarchive behavior)
-            mux_output_name = f"{output_basename}-{video_id}.mp4"
+            mux_output_path = outtmpl.to_path(tmplvars, suffix=".mp4")
 
-        output_paths[outdir / mux_output_name] = output_mux_file
+        output_paths[outdir / mux_output_path] = output_mux_file
         if proc.returncode == 0:
             intermediate_file_deletes.extend(output_stream_paths)
 
@@ -617,7 +643,9 @@ async def _run(args: "YouTubeDownloader") -> None:
 
     try:
         # bail if we fail to make the directory
-        outdir.mkdir(parents=True, exist_ok=True)
+        (outdir / outtmpl.to_path(tmplvars, suffix=".d").parent).mkdir(
+            parents=True, exist_ok=True
+        )
 
         # move files to their final location
         #
@@ -640,6 +668,7 @@ class YouTubeDownloader(msgspec.Struct, kw_only=True):
     max_video_resolution: int | None = None
     staging_directory: pathlib.Path | None
     output_directory: pathlib.Path | None
+    output_template: OutputPathTemplate | None = None
     keep_ts_files: bool = True  # for backwards compatibility
     poll_interval: int = 0
     poll_unavailable_interval: int = 0

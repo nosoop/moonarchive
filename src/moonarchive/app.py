@@ -4,6 +4,8 @@
 import argparse
 import contextlib
 import pathlib
+import shutil
+import textwrap
 import typing
 from types import ModuleType
 
@@ -12,6 +14,7 @@ import msgspec
 
 from .downloaders.youtube import YouTubeDownloader
 from .output import CLIMessageHandlers
+from .util.paths import OutputPathTemplateCompat
 
 wakepy: ModuleType | None = None
 try:
@@ -21,9 +24,56 @@ except ImportError:
 
 colorama.just_fix_windows_console()
 
+_tw = textwrap.TextWrapper(initial_indent="  ", subsequent_indent="  ")
+
+_FORMAT_TEMPLATE_OPTIONS_EPILOG = """\
+FORMAT TEMPLATE OPTIONS
+Format template keys are loosely similar to those used in yt-dlp and ytarchive, but (despite being written in Python) do not support the full functionality of Python's string interpolation logic.
+
+Only placeholders in the form '%(key)s' are accepted in moonarchive.
+
+The following keys are available:
+
+id: Video and possible broadcast identifier; identical to video ID if only one broadcast was seen
+title: Video title (may be truncated to fit within length restrictions; only use as part of base name)
+video_id: Video ID only (only use in directory names, not the base)
+channel_id: Channel ID (UC...)
+channel: Name of the channel containing the livestream
+start_date: Date that the broadcast started in YYYYMMDD form
+start_time: Time that the broadcast started in HHMMSS form
+year: Year that the broadcast started in YYYY form.
+month: Month that the broadcast started in MM form (00-12).
+day: Day that the broadcast started in DD form (01-31).
+hours: Hour that the broadcast started in HH form (00-24).
+minutes: Minute that the broadcast started in MM form (00-60).
+seconds: Second that the broadcast started in SS form (00-60).
+"""
+
+
+def _format_epilog_section(section: str) -> str:
+    """
+    Formats an epilog section such that lines following the header are indented and wrapped
+    based on terminal width.
+    """
+
+    _tw.width = shutil.get_terminal_size().columns
+
+    def _() -> typing.Iterable[str]:
+        header, *rest = section.splitlines()
+        yield header
+        for line in rest:
+            if not line:
+                yield line  # keep the empty lines that are dropped by TextWrapper
+            yield from _tw.wrap(line)
+
+    return "\n".join(_())
+
 
 def main() -> None:
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=_format_epilog_section(_FORMAT_TEMPLATE_OPTIONS_EPILOG),
+    )
 
     parser.add_argument("url", type=str)
     parser.add_argument("-n", "--dry-run", action="store_true")
@@ -69,7 +119,15 @@ def main() -> None:
     parser.add_argument(
         "--output-directory",
         type=pathlib.Path,
-        help="Location for outputs (created if nonexistent; defaults to working directory)",
+        help="Base location for outputs (created if nonexistent; defaults to working directory)",
+    )
+    parser.add_argument(
+        "--output-template",
+        type=OutputPathTemplateCompat,
+        help=(
+            "Template string for output filename excluding extension "
+            "(paths relative to --output-directory permitted; defaults to '%%(title)s-%%(id)s')"
+        ),
     )
     parser.add_argument(
         "--progress-style",
