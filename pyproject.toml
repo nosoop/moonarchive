@@ -21,6 +21,7 @@ moonarchive = "moonarchive.app:main"
 [project.optional-dependencies]
 dev = [
     "mypy >= 1.9",
+    "pytest",
     "ruff >= 0.3",
 ]
 keepawake = [
@@ -42,3 +43,6 @@ requires = [
 [tool.ruff]
 line-length = 96
 lint.extend-select = ["ANN001", "ANN201", "ANN202"]
+
+[tool.pytest.ini_options]
+addopts = "--ignore=tests/manual"

@@ -19,7 +19,7 @@ import urllib.request
 from contextvars import ContextVar
 from http.cookiejar import MozillaCookieJar
 from types import ModuleType
-from typing import AsyncIterator, Iterable, Protocol, Type, TypeVar
+from typing import AsyncIterator, ClassVar, Iterable, Protocol, Type, TypeVar
 
 import av
 import httpx
@@ -948,6 +948,104 @@ async def stream_downloader(
     return manifest_outputs
 
 
+@dataclasses.dataclass(kw_only=True)
+class OutputPathTemplateVars:
+    """
+    Definition of available values for use in output path templates.
+    Note that values MUST be sanitized before template usage.
+    """
+
+    title: str = ""
+    """ Stream title. """
+
+    id: str = "xxxxxxxxxxx"
+    """
+    Video / broadcast ID.
+    Broadcast IDs are the video ID plus a ".NN" broadcast number, used to disambiguate outputs
+    for multi-broadcast livestreams.  This should only be used for filenames.
+    """
+
+    video_id: str
+    """
+    Video ID only.  This may be used as part of any intermediate directory names.
+    """
+
+    channel_id: str
+    channel: str
+    start_date: str = dataclasses.field(init=False)
+    start_time: str = dataclasses.field(init=False)
+    year: str = dataclasses.field(init=False)
+    month: str = dataclasses.field(init=False)
+    day: str = dataclasses.field(init=False)
+    hours: str = dataclasses.field(init=False)
+    minutes: str = dataclasses.field(init=False)
+    seconds: str = dataclasses.field(init=False)
+    _start_datetime: datetime.datetime = dataclasses.field(
+        default_factory=datetime.datetime.now
+    )
+
+    def __post_init__(self):
+        self.start_datetime = self._start_datetime
+
+    @property
+    def start_datetime(self) -> datetime.datetime:
+        return self._start_datetime
+
+    @start_datetime.setter
+    def start_datetime(self, value: datetime.datetime) -> None:
+        self._start_datetime = value
+        (
+            self.start_date,
+            self.start_time,
+            self.year,
+            self.month,
+            self.day,
+            self.hours,
+            self.minutes,
+            self.seconds,
+        ) = (
+            self._start_datetime.strftime(df)
+            for df in ("%Y%m%d", "%H%M%S", "%Y", "%m", "%d", "%H", "%M", "%S")
+        )
+
+
+class OutputPathTemplate(string.Template):
+    def to_path(self, outvars: OutputPathTemplateVars, /, suffix: str, **kwds) -> pathlib.Path:
+        return pathlib.Path(self.substitute(dataclasses.asdict(outvars), **kwds) + suffix)
+
+    def get_max_title_byte_length(self, outvars: OutputPathTemplateVars) -> int:
+        """
+        Calculates the maximum allowed title byte length for a filename, using a simulated large
+        broadcast ID and the file extension used by the application.
+        """
+        # https://en.wikipedia.org/wiki/Comparison_of_file_systems#Limits
+        # modern filesystems commonly have a maximum filename length of 255 bytes with higher limits on paths
+        # our default filename convention is also constrained by the following:
+        # - 12 bytes for video ID and separator '-'
+        # - 3 bytes for multi-broadcast stream extension '.00'; assume possibility of two-digit broadcast IDs
+        # - 12 bytes for longest possible file extension '.description'
+        #
+        # given this, 228 bytes seems like the absolute hard limit, but have a margin of error
+        #
+        # however upon further testing, it's observed that some applications have even shorter
+        # filename (basename?) length constraints like 240, so the revised hard limit is 213
+        test_path = self.to_path(outvars, title="", id="xxxxxxxxxxx.00", suffix=".description")
+        return 236 - len(test_path.name.encode())
+
+
+class OutputPathTemplateCompat(OutputPathTemplate):
+    """
+    String template using the interpolation pattern style used by yt-dlp (and in turn,
+    ytarchive).  This only supports named values in the form %(value)s.
+    This is implemented primarily for CLI compatibility purposes.
+    """
+
+    pattern: ClassVar = r"\%(?:\((?P<named>[_a-z][_a-z0-9]*)\)|(?P<invalid>))s"
+
+
+_DEFAULT_OUTPUT_FORMAT = OutputPathTemplate("${title}-${id}")
+
+
 async def _run(args: "YouTubeDownloader") -> None:
     # prevent usage if we're running on an event loop that doesn't support the features we need
     if sys.platform == "win32" and isinstance(
@@ -1112,6 +1210,35 @@ async def _run(args: "YouTubeDownloader") -> None:
     workdir = args.staging_directory or pathlib.Path(".")
     workdir.mkdir(parents=True, exist_ok=True)
 
+    # TODO: split this template string by parents + basename?
+    outtmpl = args.output_template or _DEFAULT_OUTPUT_FORMAT
+
+    tmplvars = OutputPathTemplateVars(
+        title=resp.video_details.title.translate(sanitize_table),
+        id=resp.video_details.video_id,
+        video_id=video_id,
+        channel_id=resp.video_details.channel_id,
+        channel=resp.video_details.author.translate(sanitize_table),
+    )
+    tmplvars.start_datetime = resp.microformat.live_broadcast_details.start_datetime
+
+    # calculate our maximum allowed title length from a filename without the title with a large
+    # broadcast ID
+    test_outtmpl_path = outtmpl.to_path(
+        tmplvars, title="", id="xxxxxxxxxxx.00", suffix=".description"
+    )
+
+    outtmpl_ident = outtmpl.get_identifiers()
+    if "id" not in outtmpl_ident:
+        # forbid templates without 'id', since it will cause ambiguity in multi-broadcast files
+        raise ValueError("'id' missing from output template")
+    elif test_outtmpl_path.is_absolute():
+        raise ValueError(
+            "Output templates containing absolute paths are not allowed. "
+            "Use --output-directory to set the base path, then specify a relative path "
+            "template using --output-template."
+        )
+
     outdir = args.output_directory or pathlib.Path()
 
     # derive filename from stream title at time of starting the download
@@ -1119,32 +1246,23 @@ async def _run(args: "YouTubeDownloader") -> None:
     # so we do not need to check for a '-' prefix
     output_basename = resp.video_details.title.translate(sanitize_table)
 
-    # https://en.wikipedia.org/wiki/Comparison_of_file_systems#Limits
-    # modern filesystems commonly have a maximum filename length of 255 bytes with higher limits on paths
-    # our default filename convention is also constrained by the following:
-    # - 12 bytes for video ID and separator '-'
-    # - 3 bytes for multi-broadcast stream extension '.00'; assume possibility of two-digit broadcast IDs
-    # - 12 bytes for longest possible file extension '.description'
-    #
-    # given this, 228 bytes seems like the absolute hard limit, but have a margin of error
-    #
-    # however upon further testing, it's observed that some applications have even shorter
-    # filename (basename?) length constraints like 240, so the revised hard limit is 213
-    trunc_basename = _string_byte_trim(output_basename, 192)
+    tmplvars.title = _string_byte_trim(
+        output_basename, outtmpl.get_max_title_byte_length(tmplvars)
+    )
 
     # output_paths[dest] = src
     output_paths = {}
 
-    if output_basename != trunc_basename:
+    if output_basename != tmplvars.title:
         # save original title
-        output_basename = trunc_basename
+        output_basename = tmplvars.title
         title_path = workdir / f"{video_id}.title.txt"
         title_path.write_text(
             resp.video_details.title,
             encoding="utf8",
             newline="\n",
         )
-        output_paths[outdir / f"{output_basename}-{video_id}.title.txt"] = title_path
+        output_paths[outdir / outtmpl.to_path(tmplvars, suffix=".title.txt")] = title_path
         status.queue.put_nowait(messages.StringMessage("Output filename will be truncated"))
 
     if args.write_description:
@@ -1154,7 +1272,7 @@ async def _run(args: "YouTubeDownloader") -> None:
             encoding="utf8",
             newline="\n",
         )
-        output_paths[outdir / f"{output_basename}-{video_id}{desc_path.suffix}"] = desc_path
+        output_paths[outdir / outtmpl.to_path(tmplvars, suffix=desc_path.suffix)] = desc_path
 
     if args.write_thumbnail:
         if resp.microformat and resp.microformat.thumbnails:
@@ -1166,7 +1284,7 @@ async def _run(args: "YouTubeDownloader") -> None:
             thumb_dest_path = (workdir / video_id).with_suffix(thumbnail_url_path.suffix)
             r = httpx.get(thumbnail_url)
             thumb_dest_path.write_bytes(r.content)
-            output_paths[outdir / f"{output_basename}-{video_id}{thumb_dest_path.suffix}"] = (
+            output_paths[outdir / outtmpl.to_path(tmplvars, suffix=thumb_dest_path.suffix)] = (
                 thumb_dest_path
             )
 
@@ -1335,13 +1453,13 @@ async def _run(args: "YouTubeDownloader") -> None:
 
         await proc.wait()
 
-        mux_output_name = f"{output_basename}-{manifest_id}.mp4"
+        mux_output_path = outtmpl.to_path(tmplvars, id=manifest_id, suffix=".mp4")
         if len(manifest_outputs) == 1:
             # single broadcast, so output video ID instead (matching ytarchive behavior)
-            mux_output_name = f"{output_basename}-{video_id}.mp4"
+            mux_output_path = outtmpl.to_path(tmplvars, suffix=".mp4")
 
         if proc.returncode == 0:
-            output_paths[outdir / mux_output_name] = output_mux_file
+            output_paths[outdir / mux_output_path] = output_mux_file
             intermediate_file_deletes.extend(output_stream_paths)
         else:
             if output_mux_file.exists():
@@ -1365,7 +1483,9 @@ async def _run(args: "YouTubeDownloader") -> None:
 
     try:
         # bail if we fail to make the directory
-        outdir.mkdir(parents=True, exist_ok=True)
+        (outdir / outtmpl.to_path(tmplvars, suffix=".d").parent).mkdir(
+            parents=True, exist_ok=True
+        )
 
         # move files to their final location
         #
@@ -1388,6 +1508,7 @@ class YouTubeDownloader(msgspec.Struct, kw_only=True):
     max_video_resolution: int | None = None
     staging_directory: pathlib.Path | None
     output_directory: pathlib.Path | None
+    output_template: OutputPathTemplate | None = None
     keep_ts_files: bool = True  # for backwards compatibility
     poll_interval: int = 0
     poll_unavailable_interval: int = 0
