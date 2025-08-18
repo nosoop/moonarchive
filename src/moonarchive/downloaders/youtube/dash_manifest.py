@@ -1,6 +1,5 @@
 #!/usr/bin/python3
 
-import string
 import xml.etree.ElementTree as ElementTree
 from typing import Self
 
@@ -11,7 +10,7 @@ class YTDashManifest(msgspec.Struct):
     # container for XML MPEG-DASH information
 
     start_number: int = 0
-    format_urls: dict[int, string.Template] = msgspec.field(default_factory=dict)
+    format_urls: dict[int, str] = msgspec.field(default_factory=dict)
 
     @classmethod
     def from_manifest_text(cls, text: str) -> Self | None:
@@ -34,18 +33,19 @@ class YTDashManifest(msgspec.Struct):
             itag = r.get("id")
             base_url_elem = r.find("{*}BaseURL")
 
-            if base_url_elem is None:
+            if (
+                base_url_elem is None
+                or base_url_elem.text is None
+                or itag is None
+                or not itag.isdigit()
+            ):
                 continue
 
-            assert base_url_elem.text
-            url_template = string.Template(base_url_elem.text + "sq/${sequence}")
+            # ensure trailing slash for urljoin
+            url = base_url_elem.text
+            if not url.endswith("/"):
+                url += "/"
 
-            try:
-                int(itag)  # type: ignore[arg-type]
-            except Exception:
-                continue
-
-            if itag and url_template:
-                manifest.format_urls[int(itag)] = url_template
+            manifest.format_urls[int(itag)] = url
 
         return manifest
