@@ -511,7 +511,7 @@ async def frag_iterator(
 
         url = manifest.format_urls[itag]
         if po_token:
-            url = string.Template(url.template + f"/pot/{po_token}")
+            url = urllib.parse.urljoin(url, f"pot/{po_token}/")
 
         try:
             # allow for batching requests of fragments if we're behind
@@ -523,7 +523,7 @@ async def frag_iterator(
                 (
                     s,
                     asyncio.create_task(
-                        client.get(url.substitute(sequence=s), timeout=timeout * 2)
+                        client.get(urllib.parse.urljoin(url, f"sq/{s}/"), timeout=timeout * 2)
                     ),
                 )
                 for s in range(cur_seq, cur_seq + batch_count)
