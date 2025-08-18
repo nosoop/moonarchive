@@ -57,14 +57,16 @@ class ResumeState(msgspec.Struct):
 T = TypeVar("T")
 
 
-def _decode_possibly_malformed_fragdata(s: str, type: T) -> Iterable[T]:
+def _decode_possibly_malformed_fragdata(s: str) -> Iterable[WrittenFragmentInfo]:
     """
     Decodes a potentially-malformed fragment list file.  The fragment list file may be malformed
     if the system dies while in the process of appending to the file.
     """
     jdec = json.JSONDecoder()
     try:
-        yield from (msgspec.convert(jdec.decode(line), type) for line in s.splitlines())
+        yield from (
+            msgspec.convert(jdec.decode(line), WrittenFragmentInfo) for line in s.splitlines()
+        )
     except json.decoder.JSONDecodeError:
         pass
 
@@ -97,9 +99,7 @@ async def _check_resume_state(
     if not fragdata_f:
         return ResumeState()
 
-    fraglist = list(
-        _decode_possibly_malformed_fragdata(fragdata_f.read_text(), WrittenFragmentInfo)
-    )
+    fraglist = list(_decode_possibly_malformed_fragdata(fragdata_f.read_text()))
     if not fraglist:
         return ResumeState()
 
