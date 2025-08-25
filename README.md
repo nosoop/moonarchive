@@ -10,12 +10,6 @@ Also to [glubsy/livestream_saver][], though I saw that long after the above.
 (If I knew Go or was comfortable parsing out yt-dlp's live-from-start logic, I'd be contributing
 changes to those projects instead.)
 
-> [!WARNING]
-> 
-> You should probably not use this tool as your only solution for downloading livestreams
-> unsupervised; the author recommends running one of the other projects listed above in parallel
-> or at least actively watching the progress to ensure that the tool is behaving correctly.
-
 > [!NOTE]
 > 
 > The module API design is currently in flux.  Unless you want to keep up with changes, maybe
