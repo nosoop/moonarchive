@@ -105,7 +105,7 @@ def main():
 
     cookies = httpx.Cookies()
     for c in log_entry.request.cookies:
-        cookies.set(c.name, c.value)
+        cookies.set(c.name, c.value, domain=".youtube.com")
 
     auth_header = _build_auth_from_cookies(
         cookies,
