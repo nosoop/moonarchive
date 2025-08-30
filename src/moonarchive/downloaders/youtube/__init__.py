@@ -37,6 +37,7 @@ from ._innertube import (
     cookie_file_ctx,
     extract_player_response,
     extract_yt_cfg,
+    heartbeat_token_ctx,
     po_token_ctx,
     visitor_data_ctx,
     ytcfg_ctx,
@@ -295,9 +296,8 @@ async def _run(args: "YouTubeDownloader") -> None:
     video_id = resp.video_details.video_id if resp.video_details else None
     heartbeat = YTPlayerHeartbeatResponse(playability_status=resp.playability_status)
 
-    heartbeat_token: str | None = (
-        resp.heartbeat_params.heartbeat_token if resp.heartbeat_params else None
-    )
+    heartbeat_token = resp.heartbeat_params.heartbeat_token if resp.heartbeat_params else None
+    heartbeat_token_ctx.set(heartbeat_token)
 
     while not resp.streaming_data:
         if heartbeat.playability_status.status == "OK":
@@ -358,9 +358,7 @@ async def _run(args: "YouTubeDownloader") -> None:
         await asyncio.sleep(seconds_wait)
         if video_id:
             try:
-                heartbeat = await _get_live_stream_status(
-                    video_id, heartbeat_token=heartbeat_token
-                )
+                heartbeat = await _get_live_stream_status(video_id)
                 continue
             except RuntimeError:
                 pass
@@ -477,7 +475,7 @@ async def _run(args: "YouTubeDownloader") -> None:
             vidsel.codec = "vp9"
 
         while True:
-            heartbeat = await _get_live_stream_status(video_id, heartbeat_token=heartbeat_token)
+            heartbeat = await _get_live_stream_status(video_id)
             playability_status = heartbeat.playability_status
 
             # spin up tasks for any new broadcasts seen

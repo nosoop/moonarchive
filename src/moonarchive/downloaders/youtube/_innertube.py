@@ -35,6 +35,8 @@ except ImportError:
 po_token_ctx: ContextVar[str | None] = ContextVar("po_token", default=None)
 visitor_data_ctx: ContextVar[str | None] = ContextVar("visitor_data", default=None)
 
+heartbeat_token_ctx: ContextVar[str | None] = ContextVar("heartbeat_token", default=None)
+
 # optional cookie file for making authenticated requests
 cookie_file_ctx: ContextVar[pathlib.Path | None] = ContextVar("cookie_file", default=None)
 
@@ -122,9 +124,7 @@ async def extract_yt_cfg(url: str) -> YTCFG:
         return msgspec.convert(response_extractor.result, type=YTCFG)  # type: ignore
 
 
-async def _get_live_stream_status(
-    video_id: str, *, heartbeat_token: str | None
-) -> YTPlayerHeartbeatResponse:
+async def _get_live_stream_status(video_id: str) -> YTPlayerHeartbeatResponse:
     post_dict: dict = {
         "context": {"client": _INITIAL_INNERTUBE_CLIENT_CONTEXT},
         "heartbeatRequestParams": {
@@ -133,6 +133,7 @@ async def _get_live_stream_status(
     }
     post_dict["videoId"] = video_id
 
+    heartbeat_token = heartbeat_token_ctx.get()
     if heartbeat_token:
         post_dict["heartbeatToken"] = heartbeat_token
 
