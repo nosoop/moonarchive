@@ -636,6 +636,7 @@ async def frag_iterator(
             await asyncio.sleep(min(timeout * 5, 20))
             continue
 
+        # TODO: clean this up again and use heartbeats to avoid making player requests
         if check_stream_status:
             # we need this call to be resilient to failures, otherwise we may have an incomplete download
             try_resp = await _get_web_player_response(video_id)
@@ -674,7 +675,21 @@ async def frag_iterator(
                 # stream is offline; sleep and retry previous fragment
                 if resp.playability_status.status == "LIVE_STREAM_OFFLINE":
                     # this code path is hit if the streamer is disconnected; retry for frag
-                    pass
+                    # poll for status until we get a different state to minmize player requests
+                    status_queue.put_nowait(
+                        messages.StringMessage(
+                            "No streaming data; status "
+                            f"{resp.playability_status.status}; "
+                            f"live now: {resp.microformat.live_broadcast_details.is_live_now}"
+                        )
+                    )
+                    while True:
+                        heartbeat = await _get_live_stream_status(video_id)
+                        playability_status = heartbeat.playability_status
+                        if resp.playability_status.status != "LIVE_STREAM_OFFLINE":
+                            break
+                        await asyncio.sleep(15)
+                    continue
                 if resp.playability_status.status == "UNPLAYABLE":
                     # either member stream, possibly unlisted, or beyond the 12h limit
                     #   reason == "This live stream recording is not available."
