@@ -54,6 +54,8 @@ status_queue_ctx: ContextVar[asyncio.Queue] = ContextVar("status_queue")
 po_token_ctx: ContextVar[str | None] = ContextVar("po_token", default=None)
 visitor_data_ctx: ContextVar[str | None] = ContextVar("visitor_data", default=None)
 
+heartbeat_token_ctx: ContextVar[str | None] = ContextVar("heartbeat_token", default=None)
+
 # optional cookie file for making authenticated requests
 cookie_file_ctx: ContextVar[pathlib.Path | None] = ContextVar("cookie_file", default=None)
 
@@ -193,9 +195,7 @@ async def extract_yt_cfg(url: str) -> YTCFG:
         return msgspec.convert(response_extractor.result, type=YTCFG)  # type: ignore
 
 
-async def _get_live_stream_status(
-    video_id: str, *, heartbeat_token: str | None
-) -> YTPlayerHeartbeatResponse:
+async def _get_live_stream_status(video_id: str) -> YTPlayerHeartbeatResponse:
     post_dict: dict = {
         "context": {"client": _INITIAL_INNERTUBE_CLIENT_CONTEXT},
         "heartbeatRequestParams": {
@@ -204,6 +204,7 @@ async def _get_live_stream_status(
     }
     post_dict["videoId"] = video_id
 
+    heartbeat_token = heartbeat_token_ctx.get()
     if heartbeat_token:
         post_dict["heartbeatToken"] = heartbeat_token
 
@@ -1116,9 +1117,8 @@ async def _run(args: "YouTubeDownloader") -> None:
     video_id = resp.video_details.video_id if resp.video_details else None
     heartbeat = YTPlayerHeartbeatResponse(playability_status=resp.playability_status)
 
-    heartbeat_token: str | None = (
-        resp.heartbeat_params.heartbeat_token if resp.heartbeat_params else None
-    )
+    heartbeat_token = resp.heartbeat_params.heartbeat_token if resp.heartbeat_params else None
+    heartbeat_token_ctx.set(heartbeat_token)
 
     while not resp.streaming_data:
         if heartbeat.playability_status.status == "OK":
@@ -1179,9 +1179,7 @@ async def _run(args: "YouTubeDownloader") -> None:
         await asyncio.sleep(seconds_wait)
         if video_id:
             try:
-                heartbeat = await _get_live_stream_status(
-                    video_id, heartbeat_token=heartbeat_token
-                )
+                heartbeat = await _get_live_stream_status(video_id)
                 continue
             except RuntimeError:
                 pass
@@ -1298,7 +1296,7 @@ async def _run(args: "YouTubeDownloader") -> None:
             vidsel.codec = "vp9"
 
         while True:
-            heartbeat = await _get_live_stream_status(video_id, heartbeat_token=heartbeat_token)
+            heartbeat = await _get_live_stream_status(video_id)
             playability_status = heartbeat.playability_status
 
             # spin up tasks for any new broadcasts seen
