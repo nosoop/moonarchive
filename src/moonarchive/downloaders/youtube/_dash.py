@@ -11,7 +11,7 @@ import msgspec
 
 from ...models import messages as messages
 from ._format import FormatSelector
-from ._innertube import _get_web_player_response, po_token_ctx
+from ._innertube import _get_live_stream_status, _get_web_player_response, po_token_ctx
 from ._status import status_queue_ctx
 from .player import (
     YTPlayerMediaType,
@@ -269,11 +269,32 @@ async def frag_iterator(
                 else:
                     return
 
+            # TODO: clean this up again and use heartbeats to avoid making player requests
             if not resp.streaming_data:
                 # stream is offline; sleep and retry previous fragment
                 if resp.playability_status.status == "LIVE_STREAM_OFFLINE":
                     # this code path is hit if the streamer is disconnected; retry for frag
-                    pass
+                    # poll for status until we get a different state to minmize player requests
+                    status_queue.put_nowait(
+                        messages.StringMessage(
+                            "No streaming data; status "
+                            f"{resp.playability_status.status}; "
+                            f"live now: {resp.microformat.live_broadcast_details.is_live_now}"
+                        )
+                    )
+                    while True:
+                        heartbeat = await _get_live_stream_status(video_id)
+                        playability_status = heartbeat.playability_status
+                        if playability_status.status != "LIVE_STREAM_OFFLINE":
+                            break
+                        elif not playability_status.live_streamability:
+                            # no auth + member stream?
+                            # ideally we block here until we get valid auth
+                            break
+                        elif playability_status.live_streamability.display_endscreen:
+                            break  # stream is over
+                        await asyncio.sleep(15)
+                    continue
                 if resp.playability_status.status == "UNPLAYABLE":
                     # either member stream, possibly unlisted, or beyond the 12h limit
                     #   reason == "This live stream recording is not available."
