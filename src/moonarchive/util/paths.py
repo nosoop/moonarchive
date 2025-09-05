@@ -15,6 +15,8 @@ def _string_byte_trim(input: str, length: int) -> str:
     """
     Trims a string using a byte limit, while ensuring that it is still valid Unicode.
     https://stackoverflow.com/a/70304695
+    Note that this may cut the string within a grapheme cluster group (resulting in a different
+    perceived character).
     """
     bytes_ = input.encode()
     try:
