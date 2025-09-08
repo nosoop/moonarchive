@@ -20,6 +20,7 @@ import msgspec
 from ...models import messages as messages
 from ...models.ffmpeg import FFMPEGProgress
 from ...output import BaseMessageHandler
+from ...util.paths import _string_byte_trim, sanitize_table
 from ._dash import frag_iterator, num_parallel_downloads_ctx
 from ._format import FormatSelector
 from ._innertube import _build_auth_from_cookies as _build_auth_from_cookies
@@ -40,22 +41,6 @@ from .player import (
     YTPlayerMediaType,
     YTPlayerResponse,
 )
-
-# table to remove illegal characters on Windows
-# we use this to match ytarchive file output behavior
-sanitize_table = str.maketrans({c: "_" for c in r'<>:"/\|?*'})
-
-
-def _string_byte_trim(input: str, length: int) -> str:
-    """
-    Trims a string using a byte limit, while ensuring that it is still valid Unicode.
-    https://stackoverflow.com/a/70304695
-    """
-    bytes_ = input.encode()
-    try:
-        return bytes_[:length].decode()
-    except UnicodeDecodeError as err:
-        return bytes_[: err.start].decode()
 
 
 class WrittenFragmentInfo(msgspec.Struct):
