@@ -5,8 +5,8 @@ import pathlib
 
 import msgspec
 
+from ..downloaders.youtube.player import YTPlayerAdaptiveFormats, YTPlayerMediaType
 from .ffmpeg import FFMPEGProgress
-from .youtube_player import YTPlayerAdaptiveFormats, YTPlayerMediaType
 
 
 class BaseMessage(msgspec.Struct, tag=True):
