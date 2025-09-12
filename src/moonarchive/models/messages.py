@@ -87,3 +87,12 @@ class DownloadJobFailedOutputMoveMessage(BaseMessage, tag="download-failed-outpu
 
 class DownloadJobFinishedMessage(BaseMessage, tag="download-finished"):
     output_paths: list[pathlib.Path]
+
+
+class StreamWaitingMessage(BaseMessage, tag="stream-waiting"):
+    """
+    Used while waiting for stream.
+    Allows consumers to update the visible start time if it is rescheduled.
+    """
+
+    scheduled_start_datetime: datetime.datetime | None
