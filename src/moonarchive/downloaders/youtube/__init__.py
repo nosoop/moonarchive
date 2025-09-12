@@ -362,18 +362,7 @@ async def _run(args: "YouTubeDownloader") -> None:
                 now = datetime.datetime.now(datetime.timezone.utc)
 
                 seconds_remaining = (timestamp - now).total_seconds() - args.schedule_offset
-                if seconds_remaining > 0:
-                    status.queue.put_nowait(
-                        messages.StringMessage(
-                            f"No stream available (scheduled to start in {int(seconds_remaining)}s at {timestamp})"
-                        )
-                    )
-                else:
-                    status.queue.put_nowait(
-                        messages.StringMessage(
-                            f"No stream available (should have started {int(-seconds_remaining)}s ago at {timestamp})"
-                        )
-                    )
+                status.queue.put_nowait(messages.StreamWaitingMessage(timestamp))
                 if seconds_remaining > 0:
                     seconds_wait = seconds_remaining
                     if args.poll_interval > 0 and seconds_wait > args.poll_interval:
