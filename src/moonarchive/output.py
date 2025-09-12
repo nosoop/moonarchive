@@ -1,6 +1,7 @@
 #!/usr/bin/python3
 
 import collections
+import datetime
 import functools
 
 import colorama.ansi
@@ -127,6 +128,17 @@ class YTArchiveMessageHandler(BaseMessageHandler, tag="ytarchive"):
                 print("Failed to move output files to desired destination:")
                 for dest, src in msg.path_mapping.items():
                     print(f"- '{dest}' (from '{src}')")
+            case msgtypes.StreamWaitingMessage(scheduled_start_datetime=timestamp):
+                if timestamp:
+                    now = datetime.datetime.now(datetime.timezone.utc).replace(microsecond=0)
+                    print(
+                        "No stream available",
+                        f"(scheduled to start in {timestamp - now} at {timestamp})"
+                        if timestamp > now
+                        else f"(should have started {now - timestamp} ago at {timestamp})",
+                    )
+                else:
+                    print("No stream available (unscheduled)")
             case _:
                 pass
 
