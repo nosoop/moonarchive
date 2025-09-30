@@ -499,21 +499,20 @@ async def _run(args: "YouTubeDownloader") -> None:
                 broadcast_key = live_streamability.broadcast_id
                 if broadcast_key not in broadcast_tasks:
                     broadcast_resp = await _get_web_player_response(video_id)
-                    if broadcast_resp:
-                        resp_broadcast_key = playability_status.live_streamability.broadcast_id
-                        # ensure broadcast didn't change again since the heartbeat response
-                        if resp_broadcast_key == broadcast_key:
-                            video_stream_dl = tg.create_task(
-                                stream_downloader(broadcast_resp, vidsel, workdir)
+                    resp_broadcast_key = playability_status.live_streamability.broadcast_id
+                    # ensure broadcast didn't change again since the heartbeat response
+                    if resp_broadcast_key == broadcast_key:
+                        video_stream_dl = tg.create_task(
+                            stream_downloader(broadcast_resp, vidsel, workdir)
+                        )
+                        audio_stream_dl = tg.create_task(
+                            stream_downloader(
+                                broadcast_resp,
+                                FormatSelector(YTPlayerMediaType.AUDIO),
+                                workdir,
                             )
-                            audio_stream_dl = tg.create_task(
-                                stream_downloader(
-                                    broadcast_resp,
-                                    FormatSelector(YTPlayerMediaType.AUDIO),
-                                    workdir,
-                                )
-                            )
-                            broadcast_tasks[broadcast_key] = [video_stream_dl, audio_stream_dl]
+                        )
+                        broadcast_tasks[broadcast_key] = [video_stream_dl, audio_stream_dl]
                         status.queue.put_nowait(
                             messages.StringMessage(
                                 f"Queued broadcast {resp_broadcast_key} for download"

@@ -237,10 +237,7 @@ async def frag_iterator(
 
         if check_stream_status:
             # we need this call to be resilient to failures, otherwise we may have an incomplete download
-            try_resp = await _get_web_player_response(video_id)
-            if not try_resp:
-                continue
-            resp = try_resp
+            resp = await _get_web_player_response(video_id)
 
             if not resp.microformat or not resp.microformat.live_broadcast_details:
                 # video is private?

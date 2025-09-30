@@ -179,7 +179,7 @@ async def _get_live_stream_status(video_id: str) -> YTPlayerHeartbeatResponse:
         raise RuntimeError("Failed to obtain heartbeat response")
 
 
-async def _get_web_player_response(video_id: str) -> YTPlayerResponse | None:
+async def _get_web_player_response(video_id: str) -> YTPlayerResponse:
     """
     Obtains the player state for the given video ID.
     """
@@ -228,7 +228,7 @@ async def _get_web_player_response(video_id: str) -> YTPlayerResponse | None:
                     )
                 )
             await asyncio.sleep(5)
-        return None
+        raise AssertionError("Failed to obtain player response")
 
 
 def _set_browser_ctx_by_name(browser_name: str) -> None:
