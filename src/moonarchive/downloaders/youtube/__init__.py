@@ -327,6 +327,18 @@ async def _run(args: "YouTubeDownloader") -> None:
             heartbeat = YTPlayerHeartbeatResponse(playability_status=resp.playability_status)
             continue
 
+        if (
+            heartbeat.playability_status.status == "LIVE_STREAM_OFFLINE"
+            and not heartbeat.playability_status.live_streamability
+        ):
+            status.queue.put_nowait(
+                messages.StreamUnavailableMessage(
+                    heartbeat.playability_status.status,
+                    "Livestream may be members-only content.",
+                )
+            )
+            return
+
         seconds_wait = 20.0
         if (
             heartbeat.playability_status.live_streamability
