@@ -171,7 +171,7 @@ class YTPlayerStreamingData(YTJSONStruct):
         if not self.dash_manifest_url:
             return None
         async with httpx.AsyncClient() as client:
-            for _ in range(6):
+            for n in itertools.count():
                 try:
                     resp = await client.get(self.dash_manifest_url, timeout=5)
                     return YTDashManifest.from_manifest_text(resp.text)

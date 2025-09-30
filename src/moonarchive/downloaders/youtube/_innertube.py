@@ -7,6 +7,7 @@ Module that handles API calls.  Includes auth.
 import asyncio
 import datetime
 import hashlib
+import itertools
 import json
 import pathlib
 from contextvars import ContextVar
@@ -80,17 +81,14 @@ async def extract_player_response(url: str) -> YTPlayerResponse:
     cookies = _cookies_from_filepath()
     status_queue = status_queue_ctx.get()
     async with httpx.AsyncClient(follow_redirects=True, cookies=cookies) as client:
-        max_retries = 10
-        for n in range(10):
+        for n in itertools.count(1):
             try:
                 r = await client.get(url)
                 response_extractor.feed(r.text)
                 break
             except httpx.HTTPError:
                 status_queue.put_nowait(
-                    messages.StringMessage(
-                        "Failed to retrieve player response " f"(attempt {n} of {max_retries})"
-                    )
+                    messages.StringMessage(f"Failed to retrieve player response (attempt {n})")
                 )
                 await asyncio.sleep(6)
 
@@ -105,17 +103,14 @@ async def extract_yt_cfg(url: str) -> YTCFG:
     cookies = _cookies_from_filepath()
     status_queue = status_queue_ctx.get()
     async with httpx.AsyncClient(follow_redirects=True, cookies=cookies) as client:
-        max_retries = 10
-        for n in range(10):
+        for n in itertools.count(1):
             try:
                 r = await client.get(url)
                 response_extractor.feed(r.text)
                 break
             except httpx.HTTPError:
                 status_queue.put_nowait(
-                    messages.StringMessage(
-                        "Failed to retrieve YTCFG response " f"(attempt {n} of {max_retries})"
-                    )
+                    messages.StringMessage(f"Failed to retrieve YTCFG response (attempt {n})")
                 )
                 await asyncio.sleep(6)
 
@@ -158,8 +153,7 @@ async def _get_live_stream_status(video_id: str) -> YTPlayerHeartbeatResponse:
         headers |= ytcfg.to_headers()
         post_dict["context"]["client"] |= ytcfg.to_post_context()
 
-        max_retries = 10
-        for n in range(max_retries):
+        for n in itertools.count(1):
             try:
                 result = await client.post(
                     "https://www.youtube.com/youtubei/v1/player/heartbeat?alt=json",
@@ -171,12 +165,11 @@ async def _get_live_stream_status(video_id: str) -> YTPlayerHeartbeatResponse:
             except (httpx.HTTPStatusError, httpx.TransportError):
                 status_queue.put_nowait(
                     messages.StringMessage(
-                        "Failed to retrieve heartbeat response data "
-                        f"(attempt {n} of {max_retries})"
+                        f"Failed to retrieve heartbeat response data (attempt {n})"
                     )
                 )
             await asyncio.sleep(5)
-        raise RuntimeError("Failed to obtain heartbeat response")
+        raise AssertionError("Failed to obtain heartbeat response")
 
 
 async def _get_web_player_response(video_id: str) -> YTPlayerResponse:
@@ -210,8 +203,7 @@ async def _get_web_player_response(video_id: str) -> YTPlayerResponse:
         headers |= ytcfg.to_headers()
         post_dict["context"]["client"] |= ytcfg.to_post_context()
 
-        max_retries = 10
-        for n in range(max_retries):
+        for n in itertools.count(1):
             try:
                 result = await client.post(
                     f"https://www.youtube.com/youtubei/v1/player?key={ytcfg.innertube_api_key}",
@@ -223,8 +215,7 @@ async def _get_web_player_response(video_id: str) -> YTPlayerResponse:
             except (httpx.HTTPStatusError, httpx.TransportError):
                 status_queue.put_nowait(
                     messages.StringMessage(
-                        "Failed to retrieve web player response "
-                        f"(attempt {n} of {max_retries})"
+                        f"Failed to retrieve web player response (attempt {n})"
                     )
                 )
             await asyncio.sleep(5)
