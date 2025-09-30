@@ -6,6 +6,7 @@ import datetime
 import io
 import itertools
 import json
+import os
 import pathlib
 import shutil
 import sys
@@ -644,6 +645,13 @@ async def _run(args: "YouTubeDownloader") -> None:
         (outdir / outtmpl.to_path(tmplvars, suffix=".d").parent).mkdir(
             parents=True, exist_ok=True
         )
+
+        if not os.access(outdir, os.W_OK):
+            # catch user error where e.g. group permissions should be assigned but aren't
+            raise ValueError(
+                "Output directory is unwritable.  You will need to fix permissions and move "
+                "files from the staging directory manually."
+            )
 
         # move files to their final location
         #
