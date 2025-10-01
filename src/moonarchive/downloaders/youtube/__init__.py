@@ -472,8 +472,9 @@ async def _run(args: "YouTubeDownloader") -> None:
             )
 
             thumb_dest_path = (workdir / video_id).with_suffix(thumbnail_url_path.suffix)
-            r = httpx.get(thumbnail_url)
-            thumb_dest_path.write_bytes(r.content)
+            async with httpx.AsyncClient() as client:
+                r = await client.get(thumbnail_url)
+                thumb_dest_path.write_bytes(r.content)
             output_paths[outdir / outtmpl.to_path(tmplvars, suffix=thumb_dest_path.suffix)] = (
                 thumb_dest_path
             )
