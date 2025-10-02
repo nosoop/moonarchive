@@ -1,6 +1,7 @@
 #!/usr/bin/python3
 
 import asyncio
+import datetime
 import io
 import urllib
 from contextvars import ContextVar
@@ -11,7 +12,7 @@ import msgspec
 
 from ...models import messages as messages
 from ._format import FormatSelector
-from ._innertube import _get_web_player_response, po_token_ctx
+from ._innertube import _get_live_stream_status, _get_web_player_response, po_token_ctx
 from ._status import status_queue_ctx
 from .player import (
     YTPlayerMediaType,
@@ -67,6 +68,13 @@ async def frag_iterator(
     cur_seq = start_seq
     max_seq = 0
 
+    # current broadcast ID may be None if the stream is done
+    # this is fine, since we only use it to check for new broadcasts
+    current_broadcast_id = (
+        resp.playability_status.live_streamability.broadcast_id
+        if resp.playability_status.live_streamability
+        else None
+    )
     current_manifest_id = resp.streaming_data.dash_manifest_id
     assert current_manifest_id
 
@@ -94,9 +102,9 @@ async def frag_iterator(
 
     client = httpx.AsyncClient(follow_redirects=True)
 
-    check_stream_status = False
     fragment_timeout_retries = 0
     last_seq_auth_expiry = 0
+    last_heartbeat_check = None
 
     num_parallel_downloads = num_parallel_downloads_ctx.get()
 
@@ -113,11 +121,17 @@ async def frag_iterator(
         if po_token:
             url = urllib.parse.urljoin(url, f"pot/{po_token}/")
 
+        fragment_access_expired = False
+
         try:
             # allow for batching requests of fragments if we're behind
             # if we're caught up this only requests one fragment
             # if any request fails, the rest of the tasks will be wasted
             batch_count = max(1, min(max_seq - cur_seq, num_parallel_downloads))
+            if last_heartbeat_check and batch_count > 1:
+                # dynamically throttle batches if we ran into issues recently
+                time_since_check = datetime.datetime.now(tz=datetime.UTC) - last_heartbeat_check
+                batch_count = min(1 + int(time_since_check.total_seconds() / 10), batch_count)
             reqs = [
                 # it doesn't look like we need cookies for fetching fragments
                 (
@@ -161,7 +175,6 @@ async def frag_iterator(
                 max_seq = new_max_seq
                 cur_seq += 1
             # no download issues, so move on to the next iteration
-            check_stream_status = False
             fragment_timeout_retries = 0
             continue
         except httpx.HTTPStatusError as exc:
@@ -181,43 +194,26 @@ async def frag_iterator(
                 # record the sequence we 403'd on - if we receive another one, then bail to
                 # avoid further errors
                 last_seq_auth_expiry = max_seq
-                status_queue.put_nowait(
-                    messages.StringMessage(
-                        f"Received HTTP 403 error {cur_seq=}, getting new player response"
-                    )
-                )
-                check_stream_status = True
-            elif exc.response.status_code in (404, 500, 503):
-                check_stream_status = True
-            elif exc.response.status_code == 401:
-                status_queue.put_nowait(
-                    messages.StringMessage(f"Received HTTP 401 error {cur_seq=}, retrying")
-                )
-                # TODO: adjust our num_parallel_downloads down for a period of time
-                await asyncio.sleep(10)
-                continue
-            else:
-                status_queue.put_nowait(
-                    messages.StringMessage(
-                        f"Unhandled HTTP code {exc.response.status_code}, retrying"
-                    )
-                )
-                await asyncio.sleep(10)
-                continue
-            if check_stream_status:
-                status_queue.put_nowait(
-                    messages.ExtractingPlayerResponseMessage(itag, exc.response.status_code)
-                )
-        except httpx.TimeoutException:
+                fragment_access_expired = True
             status_queue.put_nowait(
                 messages.StringMessage(
-                    f"Fragment retrieval for type {selector.major_type} timed out: {cur_seq} of {max_seq}"
+                    f"Received HTTP {exc.response.status_code} error on "
+                    f"{current_manifest_id} {selector.major_type} ({cur_seq} of {max_seq})"
                 )
             )
+        except httpx.ReadTimeout:
+            status_queue.put_nowait(
+                messages.StringMessage(
+                    f"Fragment retrieval timed out on "
+                    f"{current_manifest_id} {selector.major_type} ({cur_seq} of {max_seq})"
+                )
+            )
+            # timeouts can happen when going between sleep and waking states, so the max_seq we
+            # have may not reflect the live broadcast; if this happens on repeated requests then
+            # it probably is normal stream ending / downtime
             fragment_timeout_retries += 1
             if fragment_timeout_retries < 5:
                 continue
-            check_stream_status = True
         except (httpx.HTTPError, httpx.StreamError) as exc:
             # for everything else we just retry
             status_queue.put_nowait(
@@ -225,100 +221,137 @@ async def frag_iterator(
                     f"Unhandled httpx exception for type {selector.major_type}: {exc=}"
                 )
             )
-            check_stream_status = True
         except EmptyFragmentException:
             status_queue.put_nowait(
                 messages.StringMessage(
                     f"Empty {selector.major_type} fragment at {cur_seq}; retrying"
                 )
             )
-            await asyncio.sleep(min(timeout * 5, 20))
+
+        # if the broadcast has ended YouTube will increment the max sequence number by 2
+        # without any fragments being present there
+        probably_caught_up = cur_seq > 0 and cur_seq >= max_seq - 3
+
+        # verify that the stream is still available, blocking new fragment requests if offline
+        if not fragment_access_expired:
+            while True:
+                if last_heartbeat_check:
+                    # require at least 15 seconds between heartbeat checks
+                    pause_for = (
+                        last_heartbeat_check
+                        + datetime.timedelta(seconds=15)
+                        - datetime.datetime.now(tz=datetime.UTC)
+                    )
+                    await asyncio.sleep(pause_for.total_seconds())
+                last_heartbeat_check = datetime.datetime.now(tz=datetime.UTC)
+
+                # `return` means we are done; stop downloading
+                # `break` means start downloading fragments again
+                # `pass` means continue polling for a change in state
+                heartbeat = await _get_live_stream_status(video_id)
+                playability = heartbeat.playability_status
+                streamability = playability.live_streamability
+                match playability.status:
+                    case "OK":
+                        broadcast_id = streamability.broadcast_id if streamability else None
+                        if broadcast_id != current_broadcast_id and probably_caught_up:
+                            return
+                        # intermittent issue, should be resolved
+                        break
+                    case "LIVE_STREAM_OFFLINE":
+                        # stream is temporarily offline or ending
+                        if not probably_caught_up:
+                            break
+                        elif streamability and streamability.display_endscreen:
+                            return
+                        pass
+                    case "UNPLAYABLE":
+                        # stream went private or something
+                        # since hitting this code path meant we didn't get 403 on the fragment
+                        # (yet), just retry and hope the playlist hasn't expired
+                        if not probably_caught_up:
+                            break
+                        return
+            # we may want to fall through to getting a new response in the future, so instead
+            # of `elif`ing this we'll just continue
             continue
 
-        if check_stream_status:
-            # we need this call to be resilient to failures, otherwise we may have an incomplete download
-            resp = await _get_web_player_response(video_id)
+        # make new player request if the playlist expired or stream went private
+        # we need this call to be resilient to failures, otherwise we may have an incomplete download
+        resp = await _get_web_player_response(video_id)
 
-            if not resp.microformat or not resp.microformat.live_broadcast_details:
-                # video is private?
-                status_queue.put_nowait(
-                    messages.StringMessage(
-                        "Microformat or live broadcast details unavailable "
-                        f"for type {selector.major_type}"
-                    )
+        if not resp.microformat or not resp.microformat.live_broadcast_details:
+            # video is private?
+            status_queue.put_nowait(
+                messages.StringMessage(
+                    "Microformat or live broadcast details unavailable "
+                    f"for type {selector.major_type}"
                 )
+            )
+            return
+
+        # the server has indicated that no fragment is present
+        # we're done if the stream is no longer live and a duration is rendered
+        if not resp.microformat.live_broadcast_details.is_live_now and (
+            not resp.video_details or resp.video_details.num_length_seconds
+        ):
+            # we need to handle this differenly during post-live
+            # the video server may return 503
+            if not probably_caught_up:
+                # post-live, X-Head-Seqnum tends to be two above the true number
+                pass
+            else:
                 return
 
-            # if the broadcast has ended YouTube will increment the max sequence number by 2
-            # without any fragments being present there
-            probably_caught_up = cur_seq > 0 and cur_seq >= max_seq - 3
+        if not resp.streaming_data:
+            # stream is offline; sleep and retry previous fragment
+            if resp.playability_status.status == "LIVE_STREAM_OFFLINE":
+                # this code path is hit if the streamer is disconnected; retry for frag
+                pass
+            if resp.playability_status.status == "UNPLAYABLE":
+                # either member stream, possibly unlisted, or beyond the 12h limit
+                #   reason == "This live stream recording is not available."
+                #   reason == "This video is available to this channel's members on level..."
 
-            # the server has indicated that no fragment is present
-            # we're done if the stream is no longer live and a duration is rendered
-            if not resp.microformat.live_broadcast_details.is_live_now and (
-                not resp.video_details or resp.video_details.num_length_seconds
-            ):
-                # we need to handle this differenly during post-live
-                # the video server may return 503
-                if not probably_caught_up:
-                    # post-live, X-Head-Seqnum tends to be two above the true number
-                    pass
-                else:
+                if (
+                    probably_caught_up
+                    and not resp.microformat.live_broadcast_details.is_live_now
+                ):
                     return
 
-            if not resp.streaming_data:
-                # stream is offline; sleep and retry previous fragment
-                if resp.playability_status.status == "LIVE_STREAM_OFFLINE":
-                    # this code path is hit if the streamer is disconnected; retry for frag
-                    pass
-                if resp.playability_status.status == "UNPLAYABLE":
-                    # either member stream, possibly unlisted, or beyond the 12h limit
-                    #   reason == "This live stream recording is not available."
-                    #   reason == "This video is available to this channel's members on level..."
-
-                    if (
-                        probably_caught_up
-                        and not resp.microformat.live_broadcast_details.is_live_now
-                    ):
-                        return
-
-                    # this code path is also hit if cookies are expired, in which case we are
-                    # not logged in.  this is fine; we'll retry fetching the frag on the current
-                    # manifest and continue attempting authed player requests until the stream
-                    # ends (user can update auth files out-of-band and will be reflected on
-                    # next request); without auth we won't know how many fragments are available
-                    #
-                    # if the manifest isn't expired (members stream, temporarily offline)
-                    # retrying the current manifest should be all that's necessary
-                    #
-                    # however, if the manifest *is* expired then a 403 result will hit the
-                    # 'repeated bad auth' code path and the download will stop
-                    # we could try setting last_seq_auth_expiry = 0
-                    pass
-                status_queue.put_nowait(
-                    messages.StringMessage(
-                        "No streaming data; status "
-                        f"{resp.playability_status.status}; "
-                        f"live now: {resp.microformat.live_broadcast_details.is_live_now}"
-                    )
+                # this code path is also hit if cookies are expired, in which case we are
+                # not logged in.  this is fine; we'll retry fetching the frag on the current
+                # manifest and continue attempting authed player requests until the stream
+                # ends (user can update auth files out-of-band and will be reflected on
+                # next request); without auth we won't know how many fragments are available
+                #
+                # if the manifest isn't expired (members stream, temporarily offline)
+                # retrying the current manifest should be all that's necessary
+                #
+                # however, if the manifest *is* expired then a 403 result will hit the
+                # 'repeated bad auth' code path and the download will stop
+                # we could try setting last_seq_auth_expiry = 0
+                pass
+            status_queue.put_nowait(
+                messages.StringMessage(
+                    "No streaming data; status "
+                    f"{resp.playability_status.status}; "
+                    f"live now: {resp.microformat.live_broadcast_details.is_live_now}"
                 )
+            )
 
-                await asyncio.sleep(15)
-                continue
+            await asyncio.sleep(15)
+            continue
 
-            if not resp.streaming_data.dash_manifest_id:
-                return
-            manifest = await resp.streaming_data.get_dash_manifest()
-            if not manifest:
-                status_queue.put_nowait(
-                    messages.StringMessage("Failed to retrieve DASH manifest")
-                )
-                return
+        if not resp.streaming_data.dash_manifest_id:
+            return
+        manifest = await resp.streaming_data.get_dash_manifest()
+        if not manifest:
+            status_queue.put_nowait(messages.StringMessage("Failed to retrieve DASH manifest"))
+            return
 
-        assert resp.streaming_data
-        assert resp.streaming_data.dash_manifest_id
         if current_manifest_id != resp.streaming_data.dash_manifest_id:
-            # manifest ID differs; we're done
+            # manifest ID differs; we no longer have access to the broadcast this task is for
             return
 
         # it is actually possible for a format to disappear from an updated manifest without
