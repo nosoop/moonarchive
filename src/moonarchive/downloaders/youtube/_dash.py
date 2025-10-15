@@ -318,6 +318,9 @@ async def frag_iterator(
             # stream is offline; sleep and retry previous fragment
             if resp.playability_status.status == "LIVE_STREAM_OFFLINE":
                 # this code path is hit if the streamer is disconnected; retry for frag
+                #
+                # note that if the stream goes unavailable for 6+ hours it might be possible
+                # that we start hitting this code path repeatedly
                 pass
             if resp.playability_status.status == "UNPLAYABLE":
                 # either member stream, possibly unlisted, or beyond the 12h limit
