@@ -210,6 +210,11 @@ def main() -> None:
         type=str,
         help="Visitor data to be used in place of cookies when not logged in",
     )
+    parser.add_argument(
+        "--unstable-bgutil-pot-provider-url",
+        type=str,
+        help="URL to an instance of the BgUtils POT provider",
+    )
 
     args = parser.parse_args()
 

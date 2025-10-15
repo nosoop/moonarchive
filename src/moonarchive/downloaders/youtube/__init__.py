@@ -43,6 +43,7 @@ from ._innertube import (
     visitor_data_ctx,
     ytcfg_ctx,
 )
+from ._pot_provider import get_potoken
 from ._status import StatusManager, status_handler, status_queue_ctx
 from .player import (
     YTPlayerHeartbeatResponse,
@@ -488,6 +489,16 @@ async def _run(args: "YouTubeDownloader") -> None:
         if args.prioritize_vp9:
             vidsel.codec = "vp9"
 
+        provider_response = await get_potoken(args.unstable_bgutil_pot_provider_url, video_id)
+        if provider_response and provider_response.po_token:
+            po_token_ctx.set(provider_response.po_token)
+        else:
+            status.queue.put_nowait(
+                messages.StringMessage(
+                    "No POT provider specified; access to fragments may expire quickly"
+                )
+            )
+
         while True:
             heartbeat = await _get_live_stream_status(video_id)
             playability_status = heartbeat.playability_status
@@ -700,6 +711,9 @@ class YouTubeDownloader(msgspec.Struct, kw_only=True):
     po_token: str | None = None
     visitor_data: str | None = None
     handlers: list[BaseMessageHandler] = msgspec.field(default_factory=list)
+
+    # experimental option - design is not finalized
+    unstable_bgutil_pot_provider_url: str | None = None
 
     async def async_run(self) -> None:
         await _run(self)
