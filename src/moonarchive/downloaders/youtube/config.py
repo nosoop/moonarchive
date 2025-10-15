@@ -1,8 +1,25 @@
 #!/usr/bin/python3
 
+import urllib.parse
+
 import msgspec
 
 from .model import YTJSONStruct
+
+
+class YTWebPlayerContextConfig(YTJSONStruct, kw_only=True):
+    serialized_experiment_flags: str | None = None
+
+    @property
+    def experiment_flags(self) -> dict[str, str]:
+        return (
+            {
+                k: v[0]
+                for k, v in urllib.parse.parse_qs(self.serialized_experiment_flags).items()
+            }
+            if self.serialized_experiment_flags
+            else {}
+        )
 
 
 class YTCFG(YTJSONStruct, kw_only=True):
@@ -19,6 +36,10 @@ class YTCFG(YTJSONStruct, kw_only=True):
     user_session_id: str | None = msgspec.field(name="USER_SESSION_ID", default=None)
 
     # DATASYNC_ID appears to be f"{DELEGATED_SESSION_ID}||{USER_SESSION_ID}"
+
+    web_player_context_configs: dict[str, YTWebPlayerContextConfig] = msgspec.field(
+        name="WEB_PLAYER_CONTEXT_CONFIGS", default_factory=dict
+    )
 
     def to_headers(self) -> dict[str, str]:
         headers = {
