@@ -50,7 +50,7 @@ class _Browser(Protocol):
 
 browser_ctx: ContextVar[_Browser | None] = ContextVar("browser", default=None)
 
-ytcfg_ctx: ContextVar[YTCFG | None] = ContextVar("ytcfg", default=None)
+ytcfg_ctx: ContextVar[YTCFG] = ContextVar("ytcfg")
 
 # mapping of cookie names to their authorization keys
 _AUTH_HASHES = {
@@ -133,9 +133,6 @@ async def _get_live_stream_status(video_id: str) -> YTPlayerHeartbeatResponse:
         post_dict["heartbeatToken"] = heartbeat_token
 
     ytcfg = ytcfg_ctx.get()
-    if not ytcfg:
-        # we assume a valid ytcfg at this point
-        raise ValueError("No YTCFG available in context")
     visitor_data = visitor_data_ctx.get()
 
     status_queue = status_queue_ctx.get()
@@ -183,9 +180,6 @@ async def _get_web_player_response(video_id: str) -> YTPlayerResponse:
     post_dict["videoId"] = video_id
 
     ytcfg = ytcfg_ctx.get()
-    if not ytcfg:
-        # we assume a valid ytcfg at this point
-        raise ValueError("No YTCFG available in context")
     visitor_data = visitor_data_ctx.get()
 
     status_queue = status_queue_ctx.get()
