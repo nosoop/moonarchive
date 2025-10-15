@@ -489,15 +489,22 @@ async def _run(args: "YouTubeDownloader") -> None:
         if args.prioritize_vp9:
             vidsel.codec = "vp9"
 
-        provider_response = await get_potoken(args.unstable_bgutil_pot_provider_url, video_id)
-        if provider_response and provider_response.po_token:
-            po_token_ctx.set(provider_response.po_token)
-        else:
-            status.queue.put_nowait(
-                messages.StringMessage(
-                    "No POT provider specified; access to fragments may expire quickly"
-                )
+        ytcfg = ytcfg_ctx.get()
+        if ytcfg.web_player_context_configs is None or any(
+            playercfg.experiment_flags.get("html5_generate_content_po_token", "true") == "true"
+            for playercfg in ytcfg.web_player_context_configs.values()
+        ):
+            provider_response = await get_potoken(
+                args.unstable_bgutil_pot_provider_url, video_id
             )
+            if provider_response and provider_response.po_token:
+                po_token_ctx.set(provider_response.po_token)
+            else:
+                status.queue.put_nowait(
+                    messages.StringMessage(
+                        "No POToken provider specified; access to fragments may expire quickly"
+                    )
+                )
 
         while True:
             heartbeat = await _get_live_stream_status(video_id)
