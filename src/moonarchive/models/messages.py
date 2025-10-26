@@ -85,8 +85,48 @@ class DownloadJobFailedOutputMoveMessage(BaseMessage, tag="download-failed-outpu
     path_mapping: dict[pathlib.Path, pathlib.Path]
 
 
+class StagingFileInfo(msgspec.Struct):
+    """Temporary file."""
+
+    path: pathlib.Path
+    """ Path to file in the staging directory. """
+
+
+class MetadataFileInfo(StagingFileInfo, tag="metadata"):
+    """
+    A metadata file (title, description, thumbnail).  If the download was completed, this should
+    have been moved to the output directory and renamed.
+    """
+
+    pass
+
+
+class YouTubeStreamFileInfo(StagingFileInfo, tag="youtube-stream"):
+    broadcast_id: str
+    muxed: bool
+    """ Whether or not this file produced an output. """
+
+
 class DownloadJobFinishedMessage(BaseMessage, tag="download-finished"):
-    output_paths: list[pathlib.Path]
+    input_details: list[MetadataFileInfo | YouTubeStreamFileInfo]
+    """
+    Details of files in the 'staging' directory (including thumbnail / description).
+    Paths may not necessarily point to existing files at the time this message is emitted.
+    """
+
+    output_paths: set[pathlib.Path]
+    """
+    Full paths to processed files in the 'output' directory.
+    """
+
+    multi_broadcast: bool
+    """
+    Whether or not the livestream was known to be split across multiple broadcasts.
+    Note that it is possible for a stream to start with a broadcast ID higher than 1.
+    """
+
+    unmuxed_broadcasts: bool
+    """ Whether or not any broadcast had a mux failure. """
 
 
 class StreamWaitingMessage(BaseMessage, tag="stream-waiting"):
