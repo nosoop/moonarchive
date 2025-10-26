@@ -251,6 +251,8 @@ async def _download_thumbnail(thumbnail_url: str, thumb_dest_path: pathlib.Path)
 
 
 async def _run(args: "YouTubeDownloader") -> None:
+    from ...models.messages import MetadataFileInfo, YouTubeStreamFileInfo
+
     # prevent usage if we're running on an event loop that doesn't support the features we need
     if sys.platform == "win32" and isinstance(
         asyncio.get_event_loop(), asyncio.SelectorEventLoop
@@ -451,6 +453,9 @@ async def _run(args: "YouTubeDownloader") -> None:
     # output_paths[dest] = src
     output_paths = {}
 
+    # list of metadata files generated in the temporary directory
+    metadata_file_list: list[MetadataFileInfo] = []
+
     if output_basename != tmplvars.title:
         # save original title
         output_basename = tmplvars.title
@@ -461,6 +466,7 @@ async def _run(args: "YouTubeDownloader") -> None:
             newline="\n",
         )
         output_paths[outdir / outtmpl.to_path(tmplvars, suffix=".title.txt")] = title_path
+        metadata_file_list.append(MetadataFileInfo(path=title_path))
         status.queue.put_nowait(messages.StringMessage("Output filename will be truncated"))
 
     if args.write_description:
@@ -471,6 +477,7 @@ async def _run(args: "YouTubeDownloader") -> None:
             newline="\n",
         )
         output_paths[outdir / outtmpl.to_path(tmplvars, suffix=desc_path.suffix)] = desc_path
+        metadata_file_list.append(MetadataFileInfo(path=desc_path))
 
     thumbnail_download_task: asyncio.Task | None = None
     if args.write_thumbnail:
@@ -487,6 +494,7 @@ async def _run(args: "YouTubeDownloader") -> None:
             output_paths[outdir / outtmpl.to_path(tmplvars, suffix=thumb_dest_path.suffix)] = (
                 thumb_dest_path
             )
+            metadata_file_list.append(MetadataFileInfo(path=thumb_dest_path))
 
     broadcast_tasks: dict[str, list[asyncio.Task]] = {}
     manifest_outputs: dict[str, set[pathlib.Path]] = collections.defaultdict(set)
@@ -524,6 +532,7 @@ async def _run(args: "YouTubeDownloader") -> None:
 
             # spin up tasks for any new broadcasts seen
             # we do this first so we have at least one broadcast if the stream has finished
+            # and in post-live mode
             if playability_status.live_streamability:
                 live_streamability = playability_status.live_streamability
 
@@ -594,7 +603,7 @@ async def _run(args: "YouTubeDownloader") -> None:
     status.queue.put_nowait(messages.StreamMuxMessage(list(manifest_outputs)))
     status.queue.put_nowait(messages.StringMessage(str(manifest_outputs)))
 
-    intermediate_file_deletes: list[pathlib.Path] = []
+    broadcast_file_list: list[YouTubeStreamFileInfo] = []
 
     # output a file for each manifest we received fragments for
     ffmpeg = FFMPEGRunner(args.ffmpeg_path, stats=True)
@@ -618,6 +627,10 @@ async def _run(args: "YouTubeDownloader") -> None:
                     output_stream_paths,
                     reason="Non-standard number of output streams; requires manual processing",
                 )
+            )
+            broadcast_file_list.extend(
+                YouTubeStreamFileInfo(path=path, broadcast_id=manifest_id, muxed=False)
+                for path in output_stream_paths
             )
             continue
 
@@ -643,9 +656,15 @@ async def _run(args: "YouTubeDownloader") -> None:
             # single broadcast, so output video ID instead (matching ytarchive behavior)
             mux_output_path = outtmpl.to_path(tmplvars, suffix=".mp4")
 
-        if proc.returncode == 0:
+        mux_success = proc.returncode == 0
+
+        broadcast_file_list.extend(
+            YouTubeStreamFileInfo(path=path, broadcast_id=manifest_id, muxed=mux_success)
+            for path in output_stream_paths
+        )
+
+        if mux_success:
             output_paths[outdir / mux_output_path] = output_mux_file
-            intermediate_file_deletes.extend(output_stream_paths)
         else:
             if output_mux_file.exists():
                 output_mux_file.unlink()
@@ -663,8 +682,9 @@ async def _run(args: "YouTubeDownloader") -> None:
     await asyncio.sleep(0)
 
     if not args.keep_ts_files:
-        for f in intermediate_file_deletes:
-            f.unlink()
+        for broadcast_file in broadcast_file_list:
+            if broadcast_file.muxed:
+                broadcast_file.path.unlink()
 
     try:
         # bail if we fail to make the directory
@@ -686,9 +706,18 @@ async def _run(args: "YouTubeDownloader") -> None:
         for dest in sorted(output_paths, key=lambda p: len(str(p.resolve())), reverse=True):
             src = output_paths[dest]
             await asyncio.to_thread(shutil.move, src, dest)
-        status.queue.put_nowait(messages.DownloadJobFinishedMessage(list(output_paths.keys())))
     except OSError:
         status.queue.put_nowait(messages.DownloadJobFailedOutputMoveMessage(output_paths))
+    status.queue.put_nowait(
+        messages.DownloadJobFinishedMessage(
+            input_details=metadata_file_list + broadcast_file_list,
+            output_paths=set(output_paths.keys()),
+            multi_broadcast=len(manifest_outputs) > 1,
+            unmuxed_broadcasts=not all(
+                broadcast_file.muxed for broadcast_file in broadcast_file_list
+            ),
+        )
+    )
     jobs.clear()
 
 
