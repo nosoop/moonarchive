@@ -86,7 +86,26 @@ class DownloadJobFailedOutputMoveMessage(BaseMessage, tag="download-failed-outpu
 
 
 class DownloadJobFinishedMessage(BaseMessage, tag="download-finished"):
-    output_paths: list[pathlib.Path]
+    input_paths: set[pathlib.Path]
+    """
+    Full paths to unprocessed files in the 'staging' directory (including thumbnail /
+    description).  Paths may not necessarily point to existing files at the time this message is
+    emitted.
+    """
+
+    output_paths: set[pathlib.Path]
+    """
+    Full paths to processed files in the 'output' directory.
+    """
+
+    multi_broadcast: bool
+    """
+    Whether or not the livestream was known to be split across multiple broadcasts.
+    Note that it is possible for a stream to start with a broadcast ID higher than 1.
+    """
+
+    unmuxed_broadcasts: bool
+    """ Whether or not any broadcast had a mux failure. """
 
 
 class StreamWaitingMessage(BaseMessage, tag="stream-waiting"):
