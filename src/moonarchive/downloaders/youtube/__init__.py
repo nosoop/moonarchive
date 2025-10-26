@@ -518,6 +518,7 @@ async def _run(args: "YouTubeDownloader") -> None:
 
             # spin up tasks for any new broadcasts seen
             # we do this first so we have at least one broadcast if the stream has finished
+            # and in post-live mode
             if playability_status.live_streamability:
                 live_streamability = playability_status.live_streamability
 
@@ -590,6 +591,8 @@ async def _run(args: "YouTubeDownloader") -> None:
 
     intermediate_file_deletes: list[pathlib.Path] = []
 
+    unmuxed_broadcasts = False
+
     # output a file for each manifest we received fragments for
     for manifest_id, output_stream_paths in manifest_outputs.items():
         if len(output_stream_paths) != 2:
@@ -612,6 +615,7 @@ async def _run(args: "YouTubeDownloader") -> None:
                     reason="Non-standard number of output streams; requires manual processing",
                 )
             )
+            unmuxed_broadcasts = True
             continue
 
         # raising the log level to 'fatal' instead of 'warning' suppresses MOOV atom warnings
@@ -720,9 +724,16 @@ async def _run(args: "YouTubeDownloader") -> None:
         for dest in sorted(output_paths, key=lambda p: len(str(p.resolve())), reverse=True):
             src = output_paths[dest]
             await asyncio.to_thread(shutil.move, src, dest)
-        status.queue.put_nowait(messages.DownloadJobFinishedMessage(list(output_paths.keys())))
     except OSError:
         status.queue.put_nowait(messages.DownloadJobFailedOutputMoveMessage(output_paths))
+    status.queue.put_nowait(
+        messages.DownloadJobFinishedMessage(
+            input_paths=set(itertools.chain.from_iterable(manifest_outputs.values())),
+            output_paths=set(output_paths.keys()),
+            multi_broadcast=len(manifest_outputs) > 1,
+            unmuxed_broadcasts=unmuxed_broadcasts,
+        )
+    )
     jobs.clear()
 
 
