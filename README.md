@@ -30,12 +30,8 @@ changes to those projects instead.)
 ## Installation
 
 > [!WARNING]
-> As of 2024-11-22 or so, YouTube started denying the Android client from making requests that
-> obtain a DASH manifest.  As a result, `moonarchive` currently only issues requests as the web
-> client.
-> 
-> See the section on [Proof-of-origin downloads](#proof-of-origin-downloads) if you intend to
-> download streams in parallel.
+> To minimize the risk of your connection being flagged, see the section on
+> [Proof-of-origin downloads](#proof-of-origin-downloads).
 
 (Looking for a graphical interface to manage things?  Check out [moombox][].)
 
@@ -170,7 +166,12 @@ While one instance of `moonarchive` should not make requests frequently enough t
 YouTube, if you plan on downloading items in parallel it's strongly recommended to
 [obtain a token][].
 
-Pass one of the following:
+> [!WARNING]
+> The below information is somewhat outdated due to tests being rolled out by YouTube and will
+> be removed once the application is stabilized.  Please skip to to the section on
+> [content-based tokens](#content-based-tokens) for the current changes.
+
+Pass one of the following (where `${VAR}` is variable information):
 
 - `--po-token ${POTOKEN} --visitor-data ${VISITOR_DATA}` for non-logged in contexts
 - `--po-token ${POTOKEN} --cookies ${COOKIE_FILE}` for logged in contexts (member streams, etc.)
@@ -188,6 +189,26 @@ Proof-of-origin is very much an evolving thing, so my personal observations at a
 differ from that of others.
 
 [obtain a token]: https://github.com/yt-dlp/yt-dlp/wiki/PO-Token-Guide
+
+#### Content-based tokens
+
+As of around 2025-10-14, YouTube started broadly rolling out a change where the video server
+(GVS) now accepts tokens generated based on video ID.
+
+This effectively makes token generation occur at every download, instead of on the order of
+months.
+
+In v0.4.4, `moonarchive` is able to leverage
+[Brainicism's proof-of-origin token provider][bgutil-pot], the same software currently
+recommended by yt-dlp's maintainers.  To use this, pass the URL of the instance:
+
+```
+--unstable-bgutil-pot-provider-url "http://127.0.0.1:4416"
+```
+
+Note that this option is currently experimental and subject to change once the API stabilizes.
+
+[bgutil-pot]: https://github.com/Brainicism/bgutil-ytdlp-pot-provider
 
 ## Contributions
 
