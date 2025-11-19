@@ -44,6 +44,13 @@ class EmptyFragmentException(Exception):
     """
 
 
+class RepeatedFragmentExpiryException(Exception):
+    """
+    Exception indicating that access to the fragment failed even after fetching a new player
+    instance.  This likely indicates a bad proof-of-origin token.
+    """
+
+
 async def frag_iterator(
     resp: YTPlayerResponse, selector: FormatSelector, start_seq: int = 0
 ) -> AsyncIterator[FragmentInfo]:
@@ -200,8 +207,7 @@ async def frag_iterator(
                             "stopping operation."
                         )
                     )
-                    # we should probably error out of this
-                    return
+                    raise RepeatedFragmentExpiryException
                 # record the sequence we 403'd on - if we receive another one, then bail to
                 # avoid further errors
                 last_seq_auth_expiry = max_seq
