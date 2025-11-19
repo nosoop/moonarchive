@@ -202,9 +202,21 @@ async def frag_iterator(
                 # FIXME: we need to check playability_status instead of bailing
                 if last_seq_auth_expiry == cur_seq:
                     if max_seq - 2 > cur_seq:
-                        # it's very rare, but there are instances when YouTube responds with a
-                        # 403 for a public stream.  TODO properly handle by skipping
-                        pass
+                        # It's very rare, but there are instances when YouTube repeatedly
+                        # responds with a 403 on a fragment that should be valid (even
+                        # unplayable when rewinding is enabled).  Skip it.
+                        status_queue.put_nowait(
+                            messages.StringMessage(
+                                f"Skipping fragment {cur_seq} on "
+                                f"{current_manifest_id} {selector.major_type} "
+                                "due to repeated 403 results"
+                            )
+                        )
+                        cur_seq += 1
+                        # Increment sequence auth to avoid multiple player requests on
+                        # sequential 403s.
+                        last_seq_auth_expiry = cur_seq
+                        continue
                     status_queue.put_nowait(
                         messages.StringMessage(
                             f"Received HTTP 403 error on previous sequence {cur_seq=}, "
