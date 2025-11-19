@@ -3,7 +3,6 @@
 import asyncio
 import collections
 import datetime
-import io
 import itertools
 import json
 import os
@@ -52,9 +51,11 @@ from .player import (
 )
 
 
-class WrittenFragmentInfo(msgspec.Struct):
+
+class WrittenFragmentInfo(msgspec.Struct, omit_defaults=True):
     cur_seq: int
     length: int
+    video_dimensions: tuple[int, int] = (0, 0)
 
 
 class ResumeState(msgspec.Struct):
@@ -133,20 +134,10 @@ async def _check_resume_state(
 
     last_fragment = fraglist[-1]
     resume_seq = last_fragment.cur_seq + 1
+    last_frag_dimensions = last_fragment.video_dimensions
 
     if media_type != YTPlayerMediaType.VIDEO:
         return ResumeState(resume_seq)
-
-    # for videos we need additional information
-    # TODO: maybe write this information during the download?
-    last_frag_dimensions = (0, 0)
-    with raw_stream.open("rb") as rs:
-        rs.seek(total_frag_size - last_fragment.length)
-        last_frag_buffer = io.BytesIO(rs.read())
-    with av.open(last_frag_buffer, "r") as container:
-        vf = next(await asyncio.to_thread(container.decode, video=0))
-        assert type(vf) == av.VideoFrame
-        last_frag_dimensions = vf.width, vf.height
 
     # given N output streams, the last outnum should be (N - 1)
     return ResumeState(resume_seq, len(streams) - 1, last_frag_dimensions)
@@ -213,6 +204,7 @@ async def stream_downloader(
             payload = WrittenFragmentInfo(
                 cur_seq=frag.cur_seq,
                 length=frag.buffer.getbuffer().nbytes,
+                video_dimensions=last_frag_dimensions,
             )
             fragdata.write(msgspec.json.encode(payload) + b"\n")
 
