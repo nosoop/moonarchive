@@ -499,7 +499,9 @@ async def _run(args: "YouTubeDownloader") -> None:
             )
             if provider_response and provider_response.po_token:
                 po_token_ctx.set(provider_response.po_token)
-                status.queue.put_nowait(messages.StringMessage("Retrieved video-bound POToken"))
+                status.queue.put_nowait(
+                    messages.StringMessage("Retrieved content-bound POToken")
+                )
             else:
                 status.queue.put_nowait(
                     messages.StringMessage(
