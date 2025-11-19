@@ -35,10 +35,13 @@ class FragmentInfo(msgspec.Struct, kw_only=True):
 
 
 class EmptyFragmentException(Exception):
-    # exception indicating that we received a fragment response but it was empty
-    # in this situation we should retry, as we should get a non-empty result next time if the
-    # stream is still running
-    pass
+    """
+    Exception indicating that we received a fragment response without any content.
+    In this situation we should retry, as we should get a non-empty result next time if the
+    stream is still running.
+
+    This is only used for control flow within the iterator.
+    """
 
 
 async def frag_iterator(
