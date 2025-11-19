@@ -200,7 +200,11 @@ async def frag_iterator(
                 # stream access expired? retrieve a fresh manifest
                 # the stream may have finished while we were mid-download, so don't check that here
                 # FIXME: we need to check playability_status instead of bailing
-                if last_seq_auth_expiry == max_seq:
+                if last_seq_auth_expiry == cur_seq:
+                    if max_seq - 2 > cur_seq:
+                        # it's very rare, but there are instances when YouTube responds with a
+                        # 403 for a public stream.  TODO properly handle by skipping
+                        pass
                     status_queue.put_nowait(
                         messages.StringMessage(
                             f"Received HTTP 403 error on previous sequence {cur_seq=}, "
@@ -210,7 +214,7 @@ async def frag_iterator(
                     raise RepeatedFragmentExpiryException
                 # record the sequence we 403'd on - if we receive another one, then bail to
                 # avoid further errors
-                last_seq_auth_expiry = max_seq
+                last_seq_auth_expiry = cur_seq
                 fragment_access_expired = True
             status_queue.put_nowait(
                 messages.StringMessage(
