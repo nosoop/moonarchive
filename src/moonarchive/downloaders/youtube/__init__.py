@@ -239,6 +239,21 @@ async def stream_downloader(
     return manifest_outputs
 
 
+async def _download_thumbnail(thumbnail_url: str, thumb_dest_path: pathlib.Path) -> None:
+    status_queue = status_queue_ctx.get()
+    async with httpx.AsyncClient() as client:
+        for n in itertools.count(1):
+            try:
+                r = await client.get(thumbnail_url)
+                break
+            except httpx.TimeoutException:
+                status_queue.put_nowait(
+                    messages.StringMessage("Thumbnail download failed (attempt {n})")
+                )
+                await asyncio.sleep(1)
+        thumb_dest_path.write_bytes(r.content)
+
+
 async def _run(args: "YouTubeDownloader") -> None:
     # prevent usage if we're running on an event loop that doesn't support the features we need
     if sys.platform == "win32" and isinstance(
@@ -465,6 +480,7 @@ async def _run(args: "YouTubeDownloader") -> None:
         )
         output_paths[outdir / outtmpl.to_path(tmplvars, suffix=desc_path.suffix)] = desc_path
 
+    thumbnail_download_task: asyncio.Task | None = None
     if args.write_thumbnail:
         if resp.microformat and resp.microformat.thumbnails:
             thumbnail_url = resp.microformat.thumbnails[0].url
@@ -473,9 +489,9 @@ async def _run(args: "YouTubeDownloader") -> None:
             )
 
             thumb_dest_path = (workdir / video_id).with_suffix(thumbnail_url_path.suffix)
-            async with httpx.AsyncClient() as client:
-                r = await client.get(thumbnail_url)
-                thumb_dest_path.write_bytes(r.content)
+            thumbnail_download_task = asyncio.create_task(
+                _download_thumbnail(thumbnail_url, thumb_dest_path)
+            )
             output_paths[outdir / outtmpl.to_path(tmplvars, suffix=thumb_dest_path.suffix)] = (
                 thumb_dest_path
             )
@@ -576,6 +592,11 @@ async def _run(args: "YouTubeDownloader") -> None:
                 manifest_outputs[manifest_id] |= output_prefixes
         except Exception as exc:
             print(type(exc), exc)
+
+    if thumbnail_download_task:
+        # we allow the TimeoutError this raises to propagate
+        # assume the file exists at this point
+        await asyncio.wait_for(thumbnail_download_task, 120.0)
 
     status.queue.put_nowait(messages.StreamMuxMessage(list(manifest_outputs)))
     status.queue.put_nowait(messages.StringMessage(str(manifest_outputs)))
