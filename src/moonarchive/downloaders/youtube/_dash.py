@@ -59,7 +59,15 @@ async def frag_iterator(
     if not manifest:
         raise ValueError("Received a response with no DASH manifest")
 
-    selected_format, *_ = selector.select(resp.streaming_data.adaptive_formats) or (None,)
+    # some formats are not present in the DASH manifest; just exclude them for the time being
+    # nosoop/moonarchive#16
+    available_formats = [
+        format
+        for format in resp.streaming_data.adaptive_formats
+        if format.itag in manifest.format_urls
+    ]
+
+    selected_format, *_ = selector.select(available_formats) or (None,)
     if not selected_format:
         raise ValueError(f"Could not meet criteria format for format selector {selector}")
     itag = selected_format.itag
@@ -364,7 +372,13 @@ async def frag_iterator(
             # select a new format
             # IMPORTANT: we don't reset the fragment counter here to minimize the chance of the
             # stream going unavailable mid-download
-            preferred_format, *_ = selector.select(resp.streaming_data.adaptive_formats)
+            available_formats = [
+                format
+                for format in resp.streaming_data.adaptive_formats
+                if format.itag in manifest.format_urls
+            ]
+
+            preferred_format, *_ = selector.select(available_formats)
             itag = preferred_format.itag
 
             status_queue.put_nowait(
