@@ -278,6 +278,8 @@ async def frag_iterator(
                     f"Empty {selector.major_type} fragment at {cur_seq}; retrying"
                 )
             )
+            await asyncio.sleep(timeout)
+            continue
 
         # if the broadcast has ended YouTube will increment the max sequence number by 2
         # without any fragments being present there
