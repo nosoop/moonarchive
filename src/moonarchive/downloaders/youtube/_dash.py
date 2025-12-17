@@ -131,6 +131,7 @@ async def frag_iterator(
     client = httpx.AsyncClient(follow_redirects=True)
 
     fragment_timeout_retries = 0
+    fragment_empty_retries = 0
     last_seq_auth_expiry = 0
     last_heartbeat_check = None
 
@@ -213,6 +214,7 @@ async def frag_iterator(
                 cur_seq += 1
             # no download issues, so move on to the next iteration
             fragment_timeout_retries = 0
+            fragment_empty_retries = 0
             continue
         except httpx.HTTPStatusError as exc:
             if exc.response.status_code == 403:
@@ -279,6 +281,12 @@ async def frag_iterator(
                     f"Empty {selector.major_type} fragment at {cur_seq}; retrying"
                 )
             )
+            # it's also possible for a fragment request at the end of a stream to be empty
+            # allow just a few attempts before validating the status of the stream
+            fragment_empty_retries += 1
+            if fragment_empty_retries < 5:
+                await asyncio.sleep(timeout)
+                continue
 
         # if the broadcast has ended YouTube will increment the max sequence number by 2
         # without any fragments being present there
