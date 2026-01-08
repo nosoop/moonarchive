@@ -33,6 +33,7 @@ try:
 except ImportError:
     pass
 
+video_po_token_ctx: ContextVar[str | None] = ContextVar("video_po_token", default=None)
 po_token_ctx: ContextVar[str | None] = ContextVar("po_token", default=None)
 visitor_data_ctx: ContextVar[str | None] = ContextVar("visitor_data", default=None)
 
@@ -178,6 +179,10 @@ async def _get_web_player_response(video_id: str) -> YTPlayerResponse:
         "playbackContext": {"contentPlaybackContext": {"html5Preference": "HTML5_PREF_WANTS"}},
     }
     post_dict["videoId"] = video_id
+
+    video_po_token = video_po_token_ctx.get()
+    if video_po_token:
+        post_dict["serviceIntegrityDimensions"] = {"poToken": video_po_token}
 
     ytcfg = ytcfg_ctx.get()
     visitor_data = visitor_data_ctx.get()
