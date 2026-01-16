@@ -27,12 +27,12 @@ from ...util.paths import (
     _string_byte_trim,
     sanitize_table,
 )
+from ._cipher import cipher_solver_url_ctx
 from ._dash import frag_iterator, num_parallel_downloads_ctx
 from ._format import FormatSelector
 from ._innertube import _build_auth_from_cookies as _build_auth_from_cookies
 from ._innertube import (
     _get_live_stream_status,
-    _get_web_player_response,
     _set_browser_ctx_by_name,
     cookie_file_ctx,
     extract_player_response,
@@ -42,6 +42,9 @@ from ._innertube import (
     video_po_token_ctx,
     visitor_data_ctx,
     ytcfg_ctx,
+)
+from ._innertube import (
+    _get_web_player_response as _get_web_player_response,
 )
 from ._pot_provider import get_potoken
 from ._status import StatusManager, status_handler, status_queue_ctx
@@ -265,6 +268,7 @@ async def _run(args: "YouTubeDownloader") -> None:
     po_token_ctx.set(args.po_token)
     visitor_data_ctx.set(args.visitor_data)
     cookie_file_ctx.set(args.cookie_file)
+    cipher_solver_url_ctx.set(args.unstable_cipher_solver_url)
     if args.cookies_from_browser:
         _set_browser_ctx_by_name(args.cookies_from_browser)
     ytcfg_ctx.set(await extract_yt_cfg(args.url))
@@ -530,7 +534,7 @@ async def _run(args: "YouTubeDownloader") -> None:
 
                 broadcast_key = live_streamability.broadcast_id
                 if broadcast_key not in broadcast_tasks:
-                    broadcast_resp = await _get_web_player_response(video_id)
+                    broadcast_resp = await extract_player_response(args.url)
                     resp_broadcast_key = playability_status.live_streamability.broadcast_id
                     # ensure broadcast didn't change again since the heartbeat response
                     if resp_broadcast_key == broadcast_key:
@@ -737,8 +741,9 @@ class YouTubeDownloader(msgspec.Struct, kw_only=True):
     visitor_data: str | None = None
     handlers: list[BaseMessageHandler] = msgspec.field(default_factory=list)
 
-    # experimental option - design is not finalized
+    # experimental options - design is not finalized
     unstable_bgutil_pot_provider_url: str | None = None
+    unstable_cipher_solver_url: str | None = None
 
     async def async_run(self) -> None:
         await _run(self)

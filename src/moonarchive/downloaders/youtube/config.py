@@ -34,6 +34,7 @@ class YTCFG(YTJSONStruct, kw_only=True):
     session_index: str | None = msgspec.field(name="SESSION_INDEX", default=None)
     visitor_data: str = msgspec.field(name="VISITOR_DATA")
     user_session_id: str | None = msgspec.field(name="USER_SESSION_ID", default=None)
+    player_js_url: str = msgspec.field(name="PLAYER_JS_URL")
 
     # DATASYNC_ID appears to be f"{DELEGATED_SESSION_ID}||{USER_SESSION_ID}"
 

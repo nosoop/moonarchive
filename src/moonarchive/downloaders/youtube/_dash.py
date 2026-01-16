@@ -11,8 +11,17 @@ import httpx
 import msgspec
 
 from ...models import messages as messages
+from ._cipher import cipher_solver_url_ctx, decode_n_param_via_cipher_server
 from ._format import FormatSelector
-from ._innertube import _get_live_stream_status, _get_web_player_response, po_token_ctx
+from ._innertube import (
+    _get_live_stream_status,
+    extract_player_response,
+    po_token_ctx,
+    ytcfg_ctx,
+)
+from ._innertube import (
+    _get_web_player_response as _get_web_player_response,
+)
 from ._status import status_queue_ctx
 from .player import (
     YTPlayerMediaType,
@@ -62,7 +71,19 @@ async def frag_iterator(
 
     # the player response is expected to initially be a valid stream to download from
     assert resp.streaming_data
-    manifest = await resp.streaming_data.get_dash_manifest()
+
+    ytcfg = ytcfg_ctx.get()
+
+    decoded_n_param = None
+    if resp.streaming_data.n_param:
+        cipher_solver_url = cipher_solver_url_ctx.get()
+        if not cipher_solver_url:
+            raise RuntimeError("Unable to decode 'n' param in streaming data response")
+        decoded_n_param = await decode_n_param_via_cipher_server(
+            cipher_solver_url, ytcfg.player_js_url, resp.streaming_data.n_param
+        )
+
+    manifest = await resp.streaming_data.get_dash_manifest(decoded_n_param)
     if not manifest:
         raise ValueError("Received a response with no DASH manifest")
 
@@ -311,7 +332,7 @@ async def frag_iterator(
 
         # make new player request if the playlist expired or stream went private
         # we need this call to be resilient to failures, otherwise we may have an incomplete download
-        resp = await _get_web_player_response(video_id)
+        resp = await extract_player_response(f"https://youtu.be/{video_id}")
 
         if not resp.microformat or not resp.microformat.live_broadcast_details:
             # video is private?
@@ -381,7 +402,17 @@ async def frag_iterator(
 
         if not resp.streaming_data.dash_manifest_id:
             return
-        manifest = await resp.streaming_data.get_dash_manifest()
+
+        decoded_n_param = None
+        if resp.streaming_data.n_param:
+            cipher_solver_url = cipher_solver_url_ctx.get()
+            if not cipher_solver_url:
+                raise RuntimeError("Unable to decode 'n' param in streaming data response")
+            decoded_n_param = await decode_n_param_via_cipher_server(
+                cipher_solver_url, ytcfg.player_js_url, resp.streaming_data.n_param
+            )
+
+        manifest = await resp.streaming_data.get_dash_manifest(decoded_n_param)
         if not manifest:
             status_queue.put_nowait(messages.StringMessage("Failed to retrieve DASH manifest"))
             return

@@ -167,13 +167,28 @@ class YTPlayerStreamingData(YTJSONStruct):
         id_base, *_ = id.partition("~")
         return id_base
 
-    async def get_dash_manifest(self) -> YTDashManifest | None:
+    @property
+    def n_param(self) -> str | None:
         if not self.dash_manifest_url:
             return None
+
+        if "/n/" not in self.dash_manifest_url:
+            return None
+
+        params = urllib.parse.urlparse(self.dash_manifest_url).path.split("/")
+        _, n, *_ = itertools.dropwhile(lambda x: x != "n", params)
+        return n
+
+    async def get_dash_manifest(self, decoded_n_param: str | None) -> YTDashManifest | None:
+        if not self.dash_manifest_url:
+            return None
+        url = self.dash_manifest_url
+        if decoded_n_param:
+            url = self.dash_manifest_url.replace(f"/n/{self.n_param}", f"/n/{decoded_n_param}")
         async with httpx.AsyncClient() as client:
             for n in itertools.count():
                 try:
-                    resp = await client.get(self.dash_manifest_url, timeout=5)
+                    resp = await client.get(url, timeout=5)
                     return YTDashManifest.from_manifest_text(resp.text)
                 except httpx.RequestError:
                     await asyncio.sleep(5.0)

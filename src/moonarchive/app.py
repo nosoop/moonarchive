@@ -215,6 +215,11 @@ def main() -> None:
         type=str,
         help="URL to an instance of the BgUtils POT provider",
     )
+    parser.add_argument(
+        "--unstable-cipher-solver-url",
+        type=str,
+        help="URL to an instance of the yt-cipher server",
+    )
 
     args = parser.parse_args()
 
