@@ -15,6 +15,8 @@ Solver base URL.  Note that this is only used so other tasks can coordinate the 
 functions themselves take the URL as an argument.
 """
 
+_CIPHER_SOLVER_HEADERS = {"user-agent": "moonarchive (https://github.com/nosoop/moonarchive)"}
+
 
 async def decode_n_param_via_cipher_server(
     server_base_url: str, player_url: str, n_param: str | None
@@ -25,8 +27,9 @@ async def decode_n_param_via_cipher_server(
     status_queue = status_queue_ctx.get()
 
     # TODO: support more solvers such as yt-dlp/ejs
-    headers = {"user-agent": "moonarchive (https://github.com/nosoop/moonarchive)"}
-    async with httpx.AsyncClient(headers=headers, base_url=server_base_url) as client:
+    async with httpx.AsyncClient(
+        headers=_CIPHER_SOLVER_HEADERS, base_url=server_base_url
+    ) as client:
         for n in itertools.count(1):
             try:
                 sig_r = await client.post(
