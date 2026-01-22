@@ -245,7 +245,7 @@ async def _download_thumbnail(thumbnail_url: str, thumb_dest_path: pathlib.Path)
                 break
             except httpx.TimeoutException:
                 status_queue.put_nowait(
-                    messages.StringMessage("Thumbnail download failed (attempt {n})")
+                    messages.StringMessage(f"Thumbnail download failed (attempt {n})")
                 )
                 await asyncio.sleep(1)
         thumb_dest_path.write_bytes(r.content)
