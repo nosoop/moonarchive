@@ -27,6 +27,13 @@ class NParamKey(NamedTuple):
 _player_n_param_cache: dict[NParamKey, str] = {}
 
 
+class SignatureTimestampKey(NamedTuple):
+    player_url: str
+
+
+_sts_cache: dict[SignatureTimestampKey, str] = {}
+
+
 async def decode_n_param_via_cipher_server(
     server_base_url: str, player_url: str, n_param: str | None
 ) -> str | None:
@@ -60,6 +67,36 @@ async def decode_n_param_via_cipher_server(
             if status_queue:
                 status_queue.put_nowait(
                     messages.StringMessage(f"Failed to get decoded 'n' param (attempt {n})")
+                )
+
+            await asyncio.sleep(5)
+    raise AssertionError  # unreachable
+
+
+async def get_signature_timestamp_via_cipher_server(
+    server_base_url: str, player_url: str
+) -> str:
+    status_queue = status_queue_ctx.get()
+    key = SignatureTimestampKey(player_url)
+    async with httpx.AsyncClient(
+        headers=_CIPHER_SOLVER_HEADERS, base_url=server_base_url
+    ) as client:
+        for n in itertools.count(1):
+            if key in _sts_cache:
+                return _sts_cache[key]
+
+            try:
+                sts_r = await client.post("get_sts", json={"player_url": player_url})
+                sts_r_data = sts_r.json()
+                sts = sts_r_data.get("sts")
+                _sts_cache[key] = sts
+                return sts
+            except (httpx.TimeoutException, httpx.ConnectError):
+                pass
+
+            if status_queue:
+                status_queue.put_nowait(
+                    messages.StringMessage(f"Failed to get player sts (attempt {n})")
                 )
 
             await asyncio.sleep(5)

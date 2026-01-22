@@ -19,6 +19,7 @@ import httpx
 import msgspec
 
 from ...models import messages as messages
+from ._cipher import cipher_solver_url_ctx, get_signature_timestamp_via_cipher_server
 from ._extract import PlayerResponseExtractor, YTCFGExtractor
 from ._status import status_queue_ctx
 from .config import YTCFG
@@ -201,6 +202,14 @@ async def _get_web_player_response(video_id: str) -> YTPlayerResponse:
             ytcfg = msgspec.structs.replace(ytcfg, visitor_data=visitor_data)
         headers |= ytcfg.to_headers()
         post_dict["context"]["client"] |= ytcfg.to_post_context()
+
+        cipher_solver_url = cipher_solver_url_ctx.get()
+        if cipher_solver_url:
+            post_dict["playbackContext"]["contentPlaybackContext"]["signatureTimestamp"] = int(
+                await get_signature_timestamp_via_cipher_server(
+                    cipher_solver_url, ytcfg.player_js_url
+                )
+            )
 
         for n in itertools.count(1):
             try:
