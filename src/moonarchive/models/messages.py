@@ -5,7 +5,6 @@ import pathlib
 
 import msgspec
 
-from ..downloaders.youtube.player import YTPlayerAdaptiveFormats, YTPlayerMediaType
 from .ffmpeg import FFMPEGProgress
 
 
@@ -44,6 +43,8 @@ class StreamVideoFormatMessage(BaseMessage, tag="stream-video-format"):
 
 
 class FormatSelectionMessage(BaseMessage, tag="format-selection"):
+    from ..downloaders.youtube.player import YTPlayerAdaptiveFormats, YTPlayerMediaType
+
     manifest_id: str
     major_type: YTPlayerMediaType
     format: YTPlayerAdaptiveFormats
