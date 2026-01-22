@@ -508,7 +508,7 @@ async def _run(args: "YouTubeDownloader") -> None:
             for playercfg in ytcfg.web_player_context_configs.values()
         ):
             provider_response = await get_potoken(
-                args.unstable_bgutil_pot_provider_url, video_id
+                args.unstable_bgutil_pot_provider_url, video_id, ytcfg.innertube_context
             )
             if provider_response and provider_response.po_token:
                 po_token_ctx.set(provider_response.po_token)

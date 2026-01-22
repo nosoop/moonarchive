@@ -20,6 +20,7 @@ class POTokenProviderRequest(msgspec.Struct, omit_defaults=True):
     content_binding: str | None
     proxy: str | None = None
     bypass_cache: bool | None = None
+    innertube_context: dict | None = None
 
 
 class POTokenProviderResponse(msgspec.Struct, rename="camel"):
@@ -49,11 +50,15 @@ async def get_provider_version(base_url: str | None) -> POTokenPingResponse | No
 
 
 async def get_potoken(
-    base_url: str | None, content_binding: str | None
+    base_url: str | None, content_binding: str | None, innertube_context: dict | None = None
 ) -> POTokenProviderResponse | None:
     if base_url is None:
         return None
     request = POTokenProviderRequest(content_binding=content_binding)
+
+    if innertube_context:
+        request.innertube_context = innertube_context
+
     for n in itertools.count(1):
         try:
             async with httpx.AsyncClient(base_url=base_url) as client:

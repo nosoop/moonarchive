@@ -1,6 +1,7 @@
 #!/usr/bin/python3
 
 import urllib.parse
+from typing import Any
 
 import msgspec
 
@@ -31,6 +32,7 @@ class YTCFG(YTJSONStruct, kw_only=True):
     innertube_client_version: str = msgspec.field(name="INNERTUBE_CLIENT_VERSION")
     innertube_ctx_client_name: int = msgspec.field(name="INNERTUBE_CONTEXT_CLIENT_NAME")
     innertube_ctx_client_version: str = msgspec.field(name="INNERTUBE_CONTEXT_CLIENT_VERSION")
+    innertube_context: dict = msgspec.field(name="INNERTUBE_CONTEXT")
     session_index: str | None = msgspec.field(name="SESSION_INDEX", default=None)
     visitor_data: str = msgspec.field(name="VISITOR_DATA")
     user_session_id: str | None = msgspec.field(name="USER_SESSION_ID", default=None)
@@ -57,7 +59,10 @@ class YTCFG(YTJSONStruct, kw_only=True):
             headers["X-Youtube-Identity-Token"] = self.id_token
         return headers
 
-    def to_post_context(self) -> dict[str, str]:
+    def to_post_context(self) -> dict[str, Any]:
+        client_context = self.innertube_context.get("client", {})
+        if client_context:
+            return client_context
         post_context = {
             "clientName": self.innertube_client_name,
             "clientVersion": self.innertube_client_version,
