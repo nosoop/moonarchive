@@ -15,12 +15,9 @@ from ._cipher import cipher_solver_url_ctx, decode_n_param_via_cipher_server
 from ._format import FormatSelector
 from ._innertube import (
     _get_live_stream_status,
-    extract_player_response,
+    _get_web_player_response,
     po_token_ctx,
     ytcfg_ctx,
-)
-from ._innertube import (
-    _get_web_player_response as _get_web_player_response,
 )
 from ._status import status_queue_ctx
 from .player import (
@@ -332,7 +329,7 @@ async def frag_iterator(
 
         # make new player request if the playlist expired or stream went private
         # we need this call to be resilient to failures, otherwise we may have an incomplete download
-        resp = await extract_player_response(f"https://youtu.be/{video_id}")
+        resp = await _get_web_player_response(video_id)
 
         if not resp.microformat or not resp.microformat.live_broadcast_details:
             # video is private?
