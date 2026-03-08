@@ -271,7 +271,13 @@ async def _run(args: "YouTubeDownloader") -> None:
     cipher_solver_url_ctx.set(args.unstable_cipher_solver_url)
     if args.cookies_from_browser:
         _set_browser_ctx_by_name(args.cookies_from_browser)
-    ytcfg_ctx.set(await extract_yt_cfg(args.url))
+
+    ytcfg = await extract_yt_cfg(args.url)
+    if args.force_player_js_url:
+        # "/s/player/9f4cc5e4/player_ias.vflset/en_US/base.js"
+        ytcfg.player_js_url = args.force_player_js_url
+
+    ytcfg_ctx.set(ytcfg)
 
     # hold a reference to the output handler so it doesn't get GC'd until we're out of scope
     jobs = {asyncio.create_task(status_handler(args.handlers, status))}  # noqa: F841
@@ -740,6 +746,7 @@ class YouTubeDownloader(msgspec.Struct, kw_only=True):
     po_token: str | None = None
     visitor_data: str | None = None
     handlers: list[BaseMessageHandler] = msgspec.field(default_factory=list)
+    force_player_js_url: str | None = None
 
     # experimental options - design is not finalized
     unstable_bgutil_pot_provider_url: str | None = None

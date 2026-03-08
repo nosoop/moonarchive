@@ -220,6 +220,11 @@ def main() -> None:
         type=str,
         help="URL to an instance of the yt-cipher server",
     )
+    parser.add_argument(
+        "--force-player-js-url",
+        type=str,
+        help="Path to a player URL to use in place of the one extracted from the web response",
+    )
 
     args = parser.parse_args()
 
