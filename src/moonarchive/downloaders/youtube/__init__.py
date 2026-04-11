@@ -11,7 +11,7 @@ import shutil
 import sys
 import urllib.parse
 import urllib.request
-from typing import Iterable, TypeVar
+from typing import AsyncIterable, Iterable, TypeVar
 
 import av
 import httpx
@@ -248,6 +248,42 @@ async def _download_thumbnail(thumbnail_url: str, thumb_dest_path: pathlib.Path)
                 )
                 await asyncio.sleep(1)
         thumb_dest_path.write_bytes(r.content)
+
+
+async def _poll_live_heartbeat(video_id: str) -> AsyncIterable[YTPlayerHeartbeatResponse]:
+    """
+    Yields heartbeat results until the stream is finished.  If the stream was finished before
+    this was called, one heartbeat result is returned.
+    """
+    status_queue = status_queue_ctx.get()
+    while True:
+        heartbeat = await _get_live_stream_status(video_id)
+
+        yield heartbeat
+
+        playability_status = heartbeat.playability_status
+        if playability_status.status == "OK":
+            if heartbeat.stop_heartbeat:
+                break
+            pass
+        elif playability_status.status == "LIVE_STREAM_OFFLINE":
+            if not playability_status.live_streamability:
+                # no auth + member stream?
+                # ideally we block here until we get valid auth
+                break
+            elif playability_status.live_streamability.display_endscreen:
+                break  # stream is over
+        elif playability_status.status == "UNPLAYABLE":
+            # privated stream
+            break
+        else:
+            status_queue.put_nowait(
+                messages.StringMessage(
+                    f"Unexpected heartbeat status response {playability_status.status}"
+                )
+            )
+
+        await asyncio.sleep(20)
 
 
 async def _run(args: "YouTubeDownloader") -> None:
@@ -526,8 +562,7 @@ async def _run(args: "YouTubeDownloader") -> None:
                     )
                 )
 
-        while True:
-            heartbeat = await _get_live_stream_status(video_id)
+        async for heartbeat in _poll_live_heartbeat(video_id):
             playability_status = heartbeat.playability_status
 
             # spin up tasks for any new broadcasts seen
@@ -559,28 +594,6 @@ async def _run(args: "YouTubeDownloader") -> None:
                             )
                         )
 
-            if playability_status.status == "OK":
-                if heartbeat.stop_heartbeat:
-                    break
-                pass
-            elif playability_status.status == "LIVE_STREAM_OFFLINE":
-                if not playability_status.live_streamability:
-                    # no auth + member stream?
-                    # ideally we block here until we get valid auth
-                    break
-                elif playability_status.live_streamability.display_endscreen:
-                    break  # stream is over
-            elif playability_status.status == "UNPLAYABLE":
-                # privated stream
-                break
-            else:
-                status.queue.put_nowait(
-                    messages.StringMessage(
-                        f"Unexpected heartbeat status response {playability_status.status}"
-                    )
-                )
-
-            await asyncio.sleep(20)
         status.queue.put_nowait(
             messages.StringMessage(
                 "Done with heartbeat checks; waiting for broadcast download to finish"
