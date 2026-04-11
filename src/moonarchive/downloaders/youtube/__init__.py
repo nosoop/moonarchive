@@ -20,6 +20,7 @@ import msgspec
 from ...models import messages as messages
 from ...models.ffmpeg import FFMPEGProgress
 from ...output import BaseMessageHandler
+from ...util.ffmpeg import FFMPEGRunner
 from ...util.paths import (
     _DEFAULT_OUTPUT_FORMAT,
     OutputPathTemplate,
@@ -608,6 +609,7 @@ async def _run(args: "YouTubeDownloader") -> None:
     intermediate_file_deletes: list[pathlib.Path] = []
 
     # output a file for each manifest we received fragments for
+    ffmpeg = FFMPEGRunner(args.ffmpeg_path, stats=True)
     for manifest_id, output_stream_paths in manifest_outputs.items():
         if len(output_stream_paths) != 2:
             # for YouTube, we expect one audio / video stream pair per manifest
@@ -631,49 +633,11 @@ async def _run(args: "YouTubeDownloader") -> None:
             )
             continue
 
-        # raising the log level to 'fatal' instead of 'warning' suppresses MOOV atom warnings
-        # and unknown webm:vp9 element errors
-        # those warnings being dumped to stdout has a non-negligible performance impact
-        program = str(args.ffmpeg_path) if args.ffmpeg_path else "ffmpeg"
-        command = [
-            "-v",
-            "fatal",
-            "-stats",
-            "-progress",
-            "-",
-            "-nostdin",
-            "-y",
-        ]
-
-        for output_stream_path in output_stream_paths:
-            command += (
-                "-seekable",
-                "0",
-                "-thread_queue_size",
-                "1024",
-                "-i",
-                str(output_stream_path.absolute()),
-            )
-
-        command += (
-            "-c",
-            "copy",
-            "-movflags",
-            "faststart",
-            "-fflags",
-            "bitexact",
-        )
-
         # we write this to workdir since ffmpeg will need to do a second pass to move the moov
         # atom - it's assumed that the output directory will be slower than the workdir
         output_mux_file = workdir / f"{manifest_id}.mp4"
-        command += (str(output_mux_file.absolute()),)
 
-        proc = await asyncio.create_subprocess_exec(
-            program,
-            *command,
-            stdout=asyncio.subprocess.PIPE,
-        )
+        proc = await ffmpeg.create_remux_process(output_stream_paths, output_mux_file)
 
         async for progress in FFMPEGProgress.from_process_stream(proc.stdout):
             # ffmpeg progress in remux provides bitrate, total size, out_time, speed
