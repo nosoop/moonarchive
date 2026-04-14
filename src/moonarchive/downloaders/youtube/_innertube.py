@@ -75,6 +75,22 @@ _INITIAL_INNERTUBE_CLIENT_HEADERS = {
 }
 
 
+async def get_youtube_page_text(url: str) -> str:
+    cookies = _cookies_from_filepath()
+    status_queue = status_queue_ctx.get()
+    async with httpx.AsyncClient(follow_redirects=True, cookies=cookies) as client:
+        for n in itertools.count(1):
+            try:
+                r = await client.get(url)
+                return r.text
+            except httpx.HTTPError:
+                status_queue.put_nowait(
+                    messages.StringMessage(f"Failed to retrieve page response (attempt {n})")
+                )
+                await asyncio.sleep(6)
+    raise AssertionError("unreachable")
+
+
 async def extract_player_response(url: str) -> YTPlayerResponse:
     """
     Scrapes a given YouTube URL for the initial player response.

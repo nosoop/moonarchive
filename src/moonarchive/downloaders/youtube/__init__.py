@@ -30,6 +30,7 @@ from ...util.paths import (
 )
 from ._cipher import cipher_solver_url_ctx
 from ._dash import frag_iterator, num_parallel_downloads_ctx
+from ._extract import PlayerResponseExtractor, YTCFGExtractor
 from ._format import FormatSelector
 from ._innertube import _build_auth_from_cookies as _build_auth_from_cookies
 from ._innertube import (
@@ -37,7 +38,7 @@ from ._innertube import (
     _set_browser_ctx_by_name,
     cookie_file_ctx,
     extract_player_response,
-    extract_yt_cfg,
+    get_youtube_page_text,
     heartbeat_token_ctx,
     po_token_ctx,
     video_po_token_ctx,
@@ -49,6 +50,7 @@ from ._innertube import (
 )
 from ._pot_provider import get_potoken
 from ._status import StatusManager, status_handler, status_queue_ctx
+from .config import YTCFG
 from .player import (
     YTPlayerHeartbeatResponse,
     YTPlayerMediaType,
@@ -310,7 +312,14 @@ async def _run(args: "YouTubeDownloader") -> None:
     if args.cookies_from_browser:
         _set_browser_ctx_by_name(args.cookies_from_browser)
 
-    ytcfg = await extract_yt_cfg(args.url)
+    page = await get_youtube_page_text(args.url)
+
+    cfg_extract = YTCFGExtractor()
+    cfg_extract.feed(page)
+    if not cfg_extract.result:  # type: ignore
+        raise ValueError("Could not extract YTCFG response")
+    ytcfg = msgspec.convert(cfg_extract.result, type=YTCFG)  # type: ignore
+
     if args.force_player_js_url:
         # "/s/player/9f4cc5e4/player_ias.vflset/en_US/base.js"
         ytcfg.player_js_url = args.force_player_js_url
@@ -320,7 +329,11 @@ async def _run(args: "YouTubeDownloader") -> None:
     # hold a reference to the output handler so it doesn't get GC'd until we're out of scope
     jobs = {asyncio.create_task(status_handler(args.handlers, status))}  # noqa: F841
 
-    resp = await extract_player_response(args.url)
+    player_extract = PlayerResponseExtractor()
+    player_extract.feed(page)
+    if not player_extract.result:  # type: ignore
+        raise ValueError("Could not extract player response")
+    resp = msgspec.convert(player_extract.result, type=YTPlayerResponse)  # type: ignore
 
     if resp.playability_status.status in ("ERROR", "LOGIN_REQUIRED", "UNPLAYABLE"):
         status.queue.put_nowait(
