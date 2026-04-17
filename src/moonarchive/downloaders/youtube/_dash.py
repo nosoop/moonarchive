@@ -147,18 +147,16 @@ async def frag_iterator(
             value = decoded_n_param
         q_new.append((name, value))
 
-    url = urllib.parse.urlunparse(
-        selected_url_parse._replace(query=urllib.parse.urlencode(q_new))
-    )
+    url = urllib.parse.urlunparse(selected_url_parse._replace(query=''))
 
     while True:
         # clear any outstanding requests from the previous iteration
         for req_seq, req_task in reqs:
             req_task.cancel()
 
-        extra_qparams = {}
+        qparams = q_new.copy()
         if po_token:
-            extra_qparams["pot"] = po_token
+            qparams += [("pot", po_token)]
 
         fragment_access_expired = False
 
@@ -177,7 +175,7 @@ async def frag_iterator(
                     s,
                     asyncio.create_task(
                         client.get(
-                            url, params={"sq": str(s)} | extra_qparams, timeout=timeout * 2
+                            url, params=qparams + [("sq", str(s))], timeout=timeout * 2
                         )
                     ),
                 )
@@ -433,5 +431,5 @@ async def frag_iterator(
             q_new.append((name, value))
 
         url = urllib.parse.urlunparse(
-            selected_url_parse._replace(query=urllib.parse.urlencode(q_new))
+            selected_url_parse._replace(query='')
         )
