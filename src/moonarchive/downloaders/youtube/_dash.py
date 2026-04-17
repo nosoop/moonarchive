@@ -71,31 +71,23 @@ async def frag_iterator(
 
     ytcfg = ytcfg_ctx.get()
 
+    available_formats = list(resp.streaming_data.adaptive_formats)
+
+    selected_format, *_ = selector.select(available_formats) or (None,)
+    if not selected_format or not selected_format.url:
+        raise ValueError(f"Could not meet criteria format for format selector {selector}")
+    itag = selected_format.itag
+
+    selected_url_parse = urllib.parse.urlparse(selected_format.url)
+    qs: dict[str, str] = dict(urllib.parse.parse_qsl(selected_url_parse.query))
     decoded_n_param = None
-    if resp.streaming_data.n_param:
+    if "n" in qs:
         cipher_solver_url = cipher_solver_url_ctx.get()
         if not cipher_solver_url:
             raise RuntimeError("Unable to decode 'n' param in streaming data response")
         decoded_n_param = await decode_n_param_via_cipher_server(
-            cipher_solver_url, ytcfg.player_js_url, resp.streaming_data.n_param
+            cipher_solver_url, ytcfg.player_js_url, qs["n"]
         )
-
-    manifest = await resp.streaming_data.get_dash_manifest(decoded_n_param)
-    if not manifest:
-        raise ValueError("Received a response with no DASH manifest")
-
-    # some formats are not present in the DASH manifest; just exclude them for the time being
-    # nosoop/moonarchive#16
-    available_formats = [
-        format
-        for format in resp.streaming_data.adaptive_formats
-        if format.itag in manifest.format_urls
-    ]
-
-    selected_format, *_ = selector.select(available_formats) or (None,)
-    if not selected_format:
-        raise ValueError(f"Could not meet criteria format for format selector {selector}")
-    itag = selected_format.itag
 
     timeout = selected_format.target_duration_sec
     if not timeout:
@@ -111,13 +103,13 @@ async def frag_iterator(
         if resp.playability_status.live_streamability
         else None
     )
-    current_manifest_id = resp.streaming_data.dash_manifest_id
-    assert current_manifest_id
+    current_manifest_id = qs["id"]
 
     status_queue = status_queue_ctx.get()
 
     # there is a limit to the fragments that can be obtained in long-running streams
-    earliest_seq_available = int(manifest.start_number - (NUM_SECS_FRAG_RETENTION // timeout))
+    # TODO fix for non manifest-based downloads
+    earliest_seq_available = int(0 - (NUM_SECS_FRAG_RETENTION // timeout))
     if earliest_seq_available > cur_seq:
         cur_seq = earliest_seq_available
         status_queue.put_nowait(
@@ -148,14 +140,25 @@ async def frag_iterator(
 
     po_token = po_token_ctx.get()
 
+    # rewrite the url with the decoded 'n'
+    q_new = []
+    for name, value in urllib.parse.parse_qsl(selected_url_parse.query):
+        if name == "n" and decoded_n_param:
+            value = decoded_n_param
+        q_new.append((name, value))
+
+    url = urllib.parse.urlunparse(
+        selected_url_parse._replace(query=urllib.parse.urlencode(q_new))
+    )
+
     while True:
         # clear any outstanding requests from the previous iteration
         for req_seq, req_task in reqs:
             req_task.cancel()
 
-        url = manifest.format_urls[itag]
+        extra_qparams = {}
         if po_token:
-            url = urllib.parse.urljoin(url, f"pot/{po_token}/")
+            extra_qparams["pot"] = po_token
 
         fragment_access_expired = False
 
@@ -173,7 +176,9 @@ async def frag_iterator(
                 (
                     s,
                     asyncio.create_task(
-                        client.get(urllib.parse.urljoin(url, f"sq/{s}/"), timeout=timeout * 2)
+                        client.get(
+                            url, params={"sq": str(s)} | extra_qparams, timeout=timeout * 2
+                        )
                     ),
                 )
                 for s in range(cur_seq, cur_seq + batch_count)
@@ -397,45 +402,36 @@ async def frag_iterator(
             await asyncio.sleep(15)
             continue
 
-        if not resp.streaming_data.dash_manifest_id:
+        selected_format, *_ = selector.select(available_formats) or (None,)
+        if not selected_format or not selected_format.url:
+            raise ValueError(f"Could not meet criteria format for format selector {selector}")
+        itag = selected_format.itag
+
+        selected_url_parse = urllib.parse.urlparse(selected_format.url)
+        qs = dict(urllib.parse.parse_qsl(selected_url_parse.query))
+
+        if current_manifest_id != qs.get("id"):
+            # manifest ID differs; we no longer have access to the broadcast this task is for
             return
 
+        current_manifest_id = qs["id"]
+
         decoded_n_param = None
-        if resp.streaming_data.n_param:
+        if "n" in qs:
             cipher_solver_url = cipher_solver_url_ctx.get()
             if not cipher_solver_url:
                 raise RuntimeError("Unable to decode 'n' param in streaming data response")
             decoded_n_param = await decode_n_param_via_cipher_server(
-                cipher_solver_url, ytcfg.player_js_url, resp.streaming_data.n_param
+                cipher_solver_url, ytcfg.player_js_url, qs.get("n")
             )
 
-        manifest = await resp.streaming_data.get_dash_manifest(decoded_n_param)
-        if not manifest:
-            status_queue.put_nowait(messages.StringMessage("Failed to retrieve DASH manifest"))
-            return
+        # rewrite the url with the decoded 'n'
+        q_new = []
+        for name, value in urllib.parse.parse_qsl(selected_url_parse.query):
+            if name == "n" and decoded_n_param:
+                value = decoded_n_param
+            q_new.append((name, value))
 
-        if current_manifest_id != resp.streaming_data.dash_manifest_id:
-            # manifest ID differs; we no longer have access to the broadcast this task is for
-            return
-
-        # it is actually possible for a format to disappear from an updated manifest without
-        # incrementing the ID - likely to be inconsistencies between servers
-        # this may only apply to the android response
-        if itag not in manifest.format_urls:
-            # select a new format
-            # IMPORTANT: we don't reset the fragment counter here to minimize the chance of the
-            # stream going unavailable mid-download
-            available_formats = [
-                format
-                for format in resp.streaming_data.adaptive_formats
-                if format.itag in manifest.format_urls
-            ]
-
-            preferred_format, *_ = selector.select(available_formats)
-            itag = preferred_format.itag
-
-            status_queue.put_nowait(
-                messages.FormatSelectionMessage(
-                    current_manifest_id, selector.major_type, preferred_format
-                )
-            )
+        url = urllib.parse.urlunparse(
+            selected_url_parse._replace(query=urllib.parse.urlencode(q_new))
+        )

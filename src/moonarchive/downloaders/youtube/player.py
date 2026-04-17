@@ -144,6 +144,7 @@ class YTPlayerStreamingData(YTJSONStruct):
     expires_in_seconds: str
     adaptive_formats: list[YTPlayerAdaptiveFormats]
     dash_manifest_url: Optional[str] = None
+    server_abr_streaming_url: Optional[str] = None
 
     @property
     def dash_manifest_id(self) -> str | None:
@@ -156,7 +157,11 @@ class YTPlayerStreamingData(YTJSONStruct):
         # parameters in the manifest are slash-delimited
         # extract the subpath within 'id'
         if not self.dash_manifest_url:
-            return None
+            if not self.server_abr_streaming_url:
+                return None
+            sabr_urlp = urllib.parse.urlparse(self.server_abr_streaming_url)
+            sabr_qs = dict(urllib.parse.parse_qsl(sabr_urlp.query))
+            return sabr_qs['id']
 
         params = urllib.parse.urlparse(self.dash_manifest_url).path.split("/")
         _, id, *_ = itertools.dropwhile(lambda x: x != "id", params)
