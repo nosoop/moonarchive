@@ -438,10 +438,12 @@ async def _run(args: "YouTubeDownloader") -> None:
         heartbeat = YTPlayerHeartbeatResponse(playability_status=resp.playability_status)
 
     if args.list_formats:
+        # TODO properly report all formats
         for format in resp.streaming_data.adaptive_formats:
             format_disp = format
             format_disp.url = None
             status.queue.put_nowait(messages.StringMessage(str(format_disp)))
+        await asyncio.sleep(0)
         return
 
     assert resp.video_details
