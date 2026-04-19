@@ -579,6 +579,23 @@ async def _run(args: "YouTubeDownloader") -> None:
                     )
                 )
 
+        # reuse initial player response for the first broadcast download
+        # this only works if we use the corresponding STS from the original page response, and
+        # if the stream isn't finished
+        if resp.playability_status.live_streamability:
+            resp_broadcast_key = resp.playability_status.live_streamability.broadcast_id
+            if resp_broadcast_key and not args.force_player_js_url:
+                video_stream_dl = tg.create_task(stream_downloader(resp, vidsel, workdir))
+                audio_stream_dl = tg.create_task(
+                    stream_downloader(resp, FormatSelector(YTPlayerMediaType.AUDIO), workdir)
+                )
+                broadcast_tasks[resp_broadcast_key] = [video_stream_dl, audio_stream_dl]
+                status.queue.put_nowait(
+                    messages.StringMessage(
+                        f"Queued initial broadcast {resp_broadcast_key} for download"
+                    )
+                )
+
         async for heartbeat in _poll_live_heartbeat(video_id):
             playability_status = heartbeat.playability_status
 
