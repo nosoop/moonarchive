@@ -166,6 +166,14 @@ def main() -> None:
         default=False,
     )
     parser.add_argument(
+        "--av1",
+        action=argparse.BooleanOptionalAction,
+        dest="prioritize_av1",
+        help="Prioritizes av1 over any other codecs that are present at an equivalent "
+        "resolution.",
+        default=False,
+    )
+    parser.add_argument(
         "--ffmpeg-path",
         type=pathlib.Path,
         help="Path to ffmpeg binary, if there isn't one you want to use in your PATH",
