@@ -555,6 +555,8 @@ async def _run(args: "YouTubeDownloader") -> None:
         )
         if args.prioritize_vp9:
             vidsel.codec = "vp9"
+        if args.prioritize_av1:
+            vidsel.codec = "av01"
 
         ytcfg = ytcfg_ctx.get()
         if ytcfg.web_player_context_configs is None or any(
@@ -755,7 +757,11 @@ class YouTubeDownloader(msgspec.Struct, kw_only=True):
     url: str
     write_description: bool
     write_thumbnail: bool
-    prioritize_vp9: bool
+
+    # TODO support manually selecting the priorities
+    prioritize_vp9: bool = False
+    prioritize_av1: bool = False
+
     max_video_resolution: int | None = None
     staging_directory: pathlib.Path | None
     output_directory: pathlib.Path | None
