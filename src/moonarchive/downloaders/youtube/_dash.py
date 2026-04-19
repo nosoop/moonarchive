@@ -400,6 +400,8 @@ async def frag_iterator(
             await asyncio.sleep(15)
             continue
 
+        available_formats = list(resp.streaming_data.adaptive_formats)
+
         selected_format, *_ = selector.select(available_formats) or (None,)
         if not selected_format or not selected_format.url:
             raise ValueError(f"Could not meet criteria format for format selector {selector}")
