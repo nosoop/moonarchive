@@ -161,7 +161,7 @@ class YTPlayerStreamingData(YTJSONStruct):
                 return None
             sabr_urlp = urllib.parse.urlparse(self.server_abr_streaming_url)
             sabr_qs = dict(urllib.parse.parse_qsl(sabr_urlp.query))
-            return sabr_qs['id']
+            return sabr_qs["id"]
 
         params = urllib.parse.urlparse(self.dash_manifest_url).path.split("/")
         _, id, *_ = itertools.dropwhile(lambda x: x != "id", params)

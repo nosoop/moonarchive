@@ -147,7 +147,7 @@ async def frag_iterator(
             value = decoded_n_param
         q_new.append((name, value))
 
-    url = urllib.parse.urlunparse(selected_url_parse._replace(query=''))
+    url = urllib.parse.urlunparse(selected_url_parse._replace(query=""))
 
     while True:
         # clear any outstanding requests from the previous iteration
@@ -174,9 +174,7 @@ async def frag_iterator(
                 (
                     s,
                     asyncio.create_task(
-                        client.get(
-                            url, params=qparams + [("sq", str(s))], timeout=timeout * 2
-                        )
+                        client.get(url, params=qparams + [("sq", str(s))], timeout=timeout * 2)
                     ),
                 )
                 for s in range(cur_seq, cur_seq + batch_count)
@@ -432,6 +430,4 @@ async def frag_iterator(
                 value = decoded_n_param
             q_new.append((name, value))
 
-        url = urllib.parse.urlunparse(
-            selected_url_parse._replace(query='')
-        )
+        url = urllib.parse.urlunparse(selected_url_parse._replace(query=""))

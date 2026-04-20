@@ -56,7 +56,6 @@ from .player import (
 )
 
 
-
 class WrittenFragmentInfo(msgspec.Struct, omit_defaults=True):
     cur_seq: int
     length: int
