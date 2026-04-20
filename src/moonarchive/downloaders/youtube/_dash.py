@@ -107,15 +107,6 @@ async def frag_iterator(
 
     status_queue = status_queue_ctx.get()
 
-    # there is a limit to the fragments that can be obtained in long-running streams
-    # TODO fix for non manifest-based downloads
-    earliest_seq_available = int(0 - (NUM_SECS_FRAG_RETENTION // timeout))
-    if earliest_seq_available > cur_seq:
-        cur_seq = earliest_seq_available
-        status_queue.put_nowait(
-            messages.StringMessage(f"Starting from earliest available fragment {cur_seq}.")
-        )
-
     if selector.major_type == YTPlayerMediaType.VIDEO and selected_format.quality_label:
         status_queue.put_nowait(
             messages.StreamVideoFormatMessage(
@@ -142,13 +133,28 @@ async def frag_iterator(
     po_token = po_token_ctx.get()
 
     # rewrite the url with the decoded 'n'
-    q_new = []
+    q_new: list[tuple[str, str | int | float | bool | None]] = []
     for name, value in urllib.parse.parse_qsl(selected_url_parse.query):
         if name == "n" and decoded_n_param:
             value = decoded_n_param
         q_new.append((name, value))
 
     url = urllib.parse.urlunparse(selected_url_parse._replace(query=""))
+
+    peek_qparams = q_new.copy()
+    if po_token:
+        peek_qparams += [("pot", po_token)]
+
+    frag_peek = await client.head(url, params=peek_qparams)
+    head_seq = int(frag_peek.headers.get("X-Head-Seqnum", 0))
+
+    # there is a limit to the fragments that can be obtained in long-running streams
+    earliest_seq_available = int(head_seq - (NUM_SECS_FRAG_RETENTION // timeout))
+    if earliest_seq_available > cur_seq:
+        cur_seq = earliest_seq_available
+        status_queue.put_nowait(
+            messages.StringMessage(f"Starting from earliest available fragment {cur_seq}.")
+        )
 
     while True:
         # clear any outstanding requests from the previous iteration
