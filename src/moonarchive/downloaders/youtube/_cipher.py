@@ -1,6 +1,7 @@
 #!/usr/bin/python3
 
 import asyncio
+import collections
 import itertools
 from contextvars import ContextVar
 from typing import NamedTuple
@@ -24,6 +25,7 @@ class NParamKey(NamedTuple):
     n_param: str
 
 
+_player_n_param_lock: dict[NParamKey, asyncio.Lock] = collections.defaultdict(asyncio.Lock)
 _player_n_param_cache: dict[NParamKey, str] = {}
 
 
@@ -31,6 +33,7 @@ class SignatureTimestampKey(NamedTuple):
     player_url: str
 
 
+_sts_lock: dict[SignatureTimestampKey, asyncio.Lock] = collections.defaultdict(asyncio.Lock)
 _sts_cache: dict[SignatureTimestampKey, str] = {}
 
 
@@ -45,14 +48,14 @@ async def decode_n_param_via_cipher_server(
     param_key = NParamKey(player_url, n_param)
 
     # TODO: support more solvers such as yt-dlp/ejs
-    async with httpx.AsyncClient(
-        headers=_CIPHER_SOLVER_HEADERS, base_url=server_base_url
-    ) as client:
+    async with (
+        httpx.AsyncClient(headers=_CIPHER_SOLVER_HEADERS, base_url=server_base_url) as client,
+        _player_n_param_lock[param_key],
+    ):
+        # reuse a cached result if available; another task may have populated this
+        if param_key in _player_n_param_cache:
+            return _player_n_param_cache[param_key]
         for n in itertools.count(1):
-            # reuse a cached result if available; another task may have populated this
-            if param_key in _player_n_param_cache:
-                return _player_n_param_cache[param_key]
-
             try:
                 sig_r = await client.post(
                     "decrypt_signature", json={"n_param": n_param, "player_url": player_url}
@@ -78,13 +81,13 @@ async def get_signature_timestamp_via_cipher_server(
 ) -> str:
     status_queue = status_queue_ctx.get()
     key = SignatureTimestampKey(player_url)
-    async with httpx.AsyncClient(
-        headers=_CIPHER_SOLVER_HEADERS, base_url=server_base_url
-    ) as client:
+    async with (
+        httpx.AsyncClient(headers=_CIPHER_SOLVER_HEADERS, base_url=server_base_url) as client,
+        _sts_lock[key],
+    ):
+        if key in _sts_cache:
+            return _sts_cache[key]
         for n in itertools.count(1):
-            if key in _sts_cache:
-                return _sts_cache[key]
-
             try:
                 sts_r = await client.post("get_sts", json={"player_url": player_url})
                 sts_r_data = sts_r.json()
