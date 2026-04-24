@@ -94,7 +94,8 @@ class YTArchiveMessageHandler(BaseMessageHandler, tag="ytarchive"):
                     not self.last_stream_info
                     or self.last_stream_info.start_datetime != msg.start_datetime
                 ):
-                    print(f"Stream starts at {msg.start_datetime}")
+                    if msg.start_datetime:
+                        print(f"Stream starts at {msg.start_datetime}")
                 self.last_stream_info = msg
             case msgtypes.FormatSelectionMessage():
                 major_type_str = str(msg.major_type).capitalize()
