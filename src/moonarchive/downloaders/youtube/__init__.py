@@ -358,6 +358,12 @@ async def _run(args: "YouTubeDownloader") -> None:
             resp.video_details.author,
             resp.video_details.title,
             resp.microformat.live_broadcast_details.start_datetime,
+            resp.video_details.channel_id,
+            next(
+                (thumb.url for thumb in sorted(resp.microformat.thumbnails, reverse=True)),
+                None,
+            ),
+            resp.video_details.video_id,
         )
     )
 
@@ -455,6 +461,12 @@ async def _run(args: "YouTubeDownloader") -> None:
             resp.video_details.author,
             resp.video_details.title,
             resp.microformat.live_broadcast_details.start_datetime,
+            resp.video_details.channel_id,
+            next(
+                (thumb.url for thumb in sorted(resp.microformat.thumbnails, reverse=True)),
+                None,
+            ),
+            resp.video_details.video_id,
         )
     )
 

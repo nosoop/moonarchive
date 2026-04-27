@@ -35,6 +35,9 @@ class StreamInfoMessage(BaseMessage, tag="stream-info"):
     channel_name: str
     video_title: str
     start_datetime: datetime.datetime | None
+    channel_id: str | None
+    thumbnail_url: str | None
+    video_id: str
 
 
 class StreamVideoFormatMessage(BaseMessage, tag="stream-video-format"):
