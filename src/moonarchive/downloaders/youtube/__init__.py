@@ -706,8 +706,10 @@ async def _run(args: "YouTubeDownloader") -> None:
         for dest in sorted(output_paths, key=lambda p: len(str(p.resolve())), reverse=True):
             src = output_paths[dest]
             await asyncio.to_thread(shutil.move, src, dest)
-    except OSError:
-        status.queue.put_nowait(messages.DownloadJobFailedOutputMoveMessage(output_paths))
+    except OSError as exc:
+        # originally this just reported a failure event and continued to report completion,
+        # but erroring out seems more correct to call out wrong file locations
+        raise exc
     status.queue.put_nowait(
         messages.DownloadJobFinishedMessage(
             input_details=metadata_file_list + broadcast_file_list,

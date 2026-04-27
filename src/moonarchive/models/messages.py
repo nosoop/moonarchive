@@ -81,6 +81,10 @@ class StreamMuxProgressMessage(BaseMessage, tag="stream-mux-progress"):
 
 
 class DownloadJobFailedOutputMoveMessage(BaseMessage, tag="download-failed-output"):
+    """
+    No longer used.
+    """
+
     # mapping between destination and source
     path_mapping: dict[pathlib.Path, pathlib.Path]
 
