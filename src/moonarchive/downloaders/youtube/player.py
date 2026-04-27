@@ -221,6 +221,16 @@ class YTPlayerThumbnail(YTJSONStruct):
     width: int
     height: int
 
+    def __eq__(self, other: object):
+        if not isinstance(other, YTPlayerThumbnail):
+            raise NotImplementedError
+        return (self.width, self.height) == (other.width, other.height)
+
+    def __lt__(self, other: object):
+        if not isinstance(other, YTPlayerThumbnail):
+            raise NotImplementedError
+        return (self.width, self.height) < (other.width, other.height)
+
 
 class YTPlayerMicroformatRendererThumbnails(YTJSONStruct):
     thumbnails: list[YTPlayerThumbnail]
