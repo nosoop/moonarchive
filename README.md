@@ -38,8 +38,12 @@ third-party packages.
 - [ffmpeg 7.0 or newer][] is required for creating the final file.  This is not installed
 automatically.  On Windows, you can use `winget install ffmpeg`; for other platforms refer to
 your package manager.
+- Additional external software is required to pass certain checks set up by YouTube:
+    - [Brainicism's proof-of-origin token provider][bgutil-pot] for proof-of-origin tokens
+    - [kikkia/yt-cipher][] for deciphering parameters in the stream URL
 
 [ffmpeg 7.0 or newer]: https://ffmpeg.org/download.html
+[kikkia/yt-cipher]: https://github.com/kikkia/yt-cipher
 
 ### via pip
 
@@ -156,34 +160,6 @@ in the application output:
 (As stated before, with proof-of-origin, manifests normally expire after 6 hours.  Seeing this
 message on long-running streams is expected behavior.)
 
-While one instance of `moonarchive` should not make requests frequently enough to trigger
-YouTube, if you plan on downloading items in parallel it's strongly recommended to
-[obtain a token][].
-
-> [!WARNING]
-> The below information is somewhat outdated due to tests being rolled out by YouTube and will
-> be removed once the application is stabilized.  Please skip to to the section on
-> [content-based tokens](#content-based-tokens) for the current changes.
-
-Pass one of the following (where `${VAR}` is variable information):
-
-- `--po-token ${POTOKEN} --visitor-data ${VISITOR_DATA}` for non-logged in contexts
-- `--po-token ${POTOKEN} --cookies ${COOKIE_FILE}` for logged in contexts (member streams, etc.)
-
-It's not really clear how often you need to obtain a new proof-of-origin token.  The linked
-guide says 12 hours, but my personal experience on a residential connection has visitor data
-remaining valid for 180 days, with their respective tokens working for the same amount of time.
-(Once the visitor data expires, no tokens generated from that information will work, with
-YouTube behaving as if the token was not present at all.)
-
-It's likely that tokens linked to an actual user will be rotated out sooner, though I haven't
-been able to test that myself.
-
-Proof-of-origin is very much an evolving thing, so my personal observations at a given time may
-differ from that of others.
-
-[obtain a token]: https://github.com/yt-dlp/yt-dlp/wiki/PO-Token-Guide
-
 #### Content-based tokens
 
 As of around 2025-10-14, YouTube started broadly rolling out a change where the video server
@@ -200,9 +176,31 @@ recommended by yt-dlp's maintainers.  To use this, pass the URL of the instance:
 --unstable-bgutil-pot-provider-url "http://127.0.0.1:4416"
 ```
 
+The token provider must connect outbound from the same network that `moonarchive` runs in, so it
+is very likely that you will be running your own instance of this.
+
 Note that this option is currently experimental and subject to change once the API stabilizes.
 
 [bgutil-pot]: https://github.com/Brainicism/bgutil-ytdlp-pot-provider
+
+#### n-parameter solving
+
+As of 2026-01-16, YouTube started adding the `n` parameter to the DASH manifest; streams now
+require a successful decipher operation before they can be downloaded.
+
+In v0.4.7, `moonarchive` can use [kikkia/yt-cipher][], a frontend for [yt-dlp's ejs][] module.
+To use this, pass the URL of the instance:
+
+```
+--unstable-cipher-solver-url "http://127.0.0.1:8001"
+```
+
+The decipher operation is not dependent on the network connection; you may opt to use a public
+yt-cipher instance (like the one hosted by the developer of that project).
+
+Note that this option is currently experimental and subject to change once the API stabilizes.
+
+[yt-dlp's ejs]: https://github.com/yt-dlp/ejs
 
 ## Contributions
 
