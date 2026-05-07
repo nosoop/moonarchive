@@ -302,7 +302,7 @@ def _build_auth_from_cookies(
     current_timestamp = round(current_dt.timestamp())
     authorizations = []
     for cookie, auth_name in _AUTH_HASHES.items():
-        cookie_value = cookies.get(cookie)
+        cookie_value = cookies.get(cookie, domain=".youtube.com")
         if cookie_value is None:
             continue
         input_components = []
