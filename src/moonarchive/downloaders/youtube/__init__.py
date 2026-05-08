@@ -419,19 +419,23 @@ async def _run(args: "YouTubeDownloader") -> None:
         if (
             heartbeat.playability_status.live_streamability
             and heartbeat.playability_status.live_streamability.offline_slate
+            and heartbeat.playability_status.live_streamability.offline_slate.scheduled_start_datetime
         ):
             timestamp = heartbeat.playability_status.live_streamability.offline_slate.scheduled_start_datetime
-            if timestamp:
-                now = datetime.datetime.now(datetime.timezone.utc)
+            now = datetime.datetime.now(datetime.timezone.utc)
 
-                seconds_remaining = (timestamp - now).total_seconds() - args.schedule_offset
-                status.queue.put_nowait(messages.StreamWaitingMessage(timestamp))
-                if seconds_remaining > 0:
-                    seconds_wait = seconds_remaining
-                    if args.poll_interval > 0 and seconds_wait > args.poll_interval:
-                        seconds_wait = args.poll_interval
+            seconds_remaining = (timestamp - now).total_seconds()
+            status.queue.put_nowait(messages.StreamWaitingMessage(timestamp))
+            if seconds_remaining - args.schedule_offset > 0:
+                # happening in the future; wait until expected start time
+                seconds_wait = seconds_remaining - args.schedule_offset
+                if args.poll_interval > 0:
+                    seconds_wait = min(args.poll_interval, seconds_wait)
+            else:
+                # use the standard polling interval of 20
+                pass
         else:
-            status.queue.put_nowait(messages.StringMessage("No stream available, polling"))
+            status.queue.put_nowait(messages.StreamWaitingMessage(None))
 
         await asyncio.sleep(seconds_wait)
         if video_id:
