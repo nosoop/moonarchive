@@ -17,6 +17,7 @@ import av
 import httpx
 import msgspec
 
+from ...cookies import CookieTextFileSource, MozillaBrowserCookieSource
 from ...models import messages as messages
 from ...models.ffmpeg import FFMPEGProgress
 from ...output import BaseMessageHandler
@@ -37,6 +38,7 @@ from ._innertube import (
     _get_live_stream_status,
     _set_browser_ctx_by_name,
     cookie_file_ctx,
+    cookiesrc_ctx,
     extract_player_response,
     get_youtube_page_text,
     heartbeat_token_ctx,
@@ -310,7 +312,15 @@ async def _run(args: "YouTubeDownloader") -> None:
     cookie_file_ctx.set(args.cookie_file)
     cipher_solver_url_ctx.set(args.unstable_cipher_solver_url)
     if args.cookies_from_browser:
-        _set_browser_ctx_by_name(args.cookies_from_browser)
+        if args.cookies_from_browser == "firefox":
+            # use builtin cookie support
+            if args.cookie_file is None:
+                raise ValueError("no cookie file specified for browser")
+            cookiesrc_ctx.set(MozillaBrowserCookieSource(args.cookie_file))
+        else:
+            _set_browser_ctx_by_name(args.cookies_from_browser)
+    elif args.cookie_file is not None:
+        cookiesrc_ctx.set(CookieTextFileSource(args.cookie_file))
 
     page = await get_youtube_page_text(args.url)
 

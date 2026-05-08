@@ -18,6 +18,7 @@ from typing import Protocol
 import httpx
 import msgspec
 
+from ...cookies import BaseCookieSource
 from ...models import messages as messages
 from ._cipher import cipher_solver_url_ctx, get_signature_timestamp_via_cipher_server
 from ._extract import PlayerResponseExtractor, YTCFGExtractor
@@ -51,6 +52,7 @@ class _Browser(Protocol):
 
 
 browser_ctx: ContextVar[_Browser | None] = ContextVar("browser", default=None)
+cookiesrc_ctx: ContextVar[BaseCookieSource | None] = ContextVar("cookiesrc", default=None)
 
 ytcfg_ctx: ContextVar[YTCFG] = ContextVar("ytcfg")
 
@@ -263,6 +265,9 @@ async def _cookies_from_filepath() -> httpx.Cookies:
     If browser_cookie3 is installed, this may also access cookies from a web browser installed
     on the system.
     """
+    cookiesrc = cookiesrc_ctx.get(None)
+    if cookiesrc is not None:
+        return httpx.Cookies(await cookiesrc.get_cookies())
     cookie_file = cookie_file_ctx.get()
     browser = browser_ctx.get()
     if browser is not None:
