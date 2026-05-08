@@ -800,9 +800,32 @@ class YouTubeDownloader(msgspec.Struct, kw_only=True):
     output_directory: pathlib.Path | None
     output_template: OutputPathTemplate | None = None
     keep_ts_files: bool = True  # for backwards compatibility
+
     poll_interval: int = 0
+    """
+    Interval (in seconds) to recheck the status of a scheduled future stream.
+    If 0, no recheck is performed until the scheduled date / time, regardless of if the stream
+    is rescheduled.  You probably want to set this to some value between 120 and 600.
+    
+    Once the time remaining is less than the poll interval, the next status check happens at
+    the anticipated start time.
+    
+    This should've been named 'poll_upcoming_interval'...
+    """
+
     poll_unavailable_interval: int = 0
+    """
+    Interval (in seconds) to recheck the status of an unavailable (private) stream.
+    If 0, the download process is halted instead of attempting to recheck.
+    """
+
     schedule_offset: int = 0
+    """
+    Scheduled start time adjustment in seconds.  For example, for a streamer that tends to go
+    live 5 minutes ahead of their posted scheduled time, this should be set to 300 to increase
+    the frequency of status polling at that point in time.
+    """
+
     dry_run: bool = False
     list_formats: bool = False
     ffmpeg_path: pathlib.Path | None = None
