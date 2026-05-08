@@ -76,7 +76,7 @@ _INITIAL_INNERTUBE_CLIENT_HEADERS = {
 
 
 async def get_youtube_page_text(url: str) -> str:
-    cookies = _cookies_from_filepath()
+    cookies = await _cookies_from_filepath()
     status_queue = status_queue_ctx.get()
     async with httpx.AsyncClient(follow_redirects=True, cookies=cookies) as client:
         for n in itertools.count(1):
@@ -96,7 +96,7 @@ async def extract_player_response(url: str) -> YTPlayerResponse:
     Scrapes a given YouTube URL for the initial player response.
     """
     response_extractor = PlayerResponseExtractor()
-    cookies = _cookies_from_filepath()
+    cookies = await _cookies_from_filepath()
     status_queue = status_queue_ctx.get()
     async with httpx.AsyncClient(follow_redirects=True, cookies=cookies) as client:
         for n in itertools.count(1):
@@ -118,7 +118,7 @@ async def extract_player_response(url: str) -> YTPlayerResponse:
 async def extract_yt_cfg(url: str) -> YTCFG:
     # scrapes a page and returns a current YTCFG
     response_extractor = YTCFGExtractor()
-    cookies = _cookies_from_filepath()
+    cookies = await _cookies_from_filepath()
     status_queue = status_queue_ctx.get()
     async with httpx.AsyncClient(follow_redirects=True, cookies=cookies) as client:
         for n in itertools.count(1):
@@ -154,7 +154,7 @@ async def _get_live_stream_status(video_id: str) -> YTPlayerHeartbeatResponse:
     visitor_data = visitor_data_ctx.get()
 
     status_queue = status_queue_ctx.get()
-    cookies = _cookies_from_filepath()
+    cookies = await _cookies_from_filepath()
     async with httpx.AsyncClient(cookies=cookies) as client:
         headers = _INITIAL_INNERTUBE_CLIENT_HEADERS
 
@@ -205,7 +205,7 @@ async def _get_web_player_response(video_id: str) -> YTPlayerResponse:
     visitor_data = visitor_data_ctx.get()
 
     status_queue = status_queue_ctx.get()
-    cookies = _cookies_from_filepath()
+    cookies = await _cookies_from_filepath()
     async with httpx.AsyncClient(cookies=cookies) as client:
         headers = _INITIAL_INNERTUBE_CLIENT_HEADERS
 
@@ -255,7 +255,7 @@ def _set_browser_ctx_by_name(browser_name: str) -> None:
     browser_ctx.set(_browser_fns[browser_name])
 
 
-def _cookies_from_filepath() -> httpx.Cookies:
+async def _cookies_from_filepath() -> httpx.Cookies:
     """
     Retrieves cookies from the given file.  This is called on-demand during normal operation,
     allowing cookies to be updated out-of-band.
