@@ -2,6 +2,7 @@
 
 import datetime
 import pathlib
+from typing import Iterable
 
 import msgspec
 
@@ -98,6 +99,10 @@ class StagingFileInfo(msgspec.Struct):
     path: pathlib.Path
     """ Path to file in the staging directory. """
 
+    @property
+    def paths(self) -> Iterable[pathlib.Path]:
+        yield self.path
+
 
 class MetadataFileInfo(StagingFileInfo, tag="metadata"):
     """
@@ -112,6 +117,13 @@ class YouTubeStreamFileInfo(StagingFileInfo, tag="youtube-stream"):
     broadcast_id: str
     muxed: bool
     """ Whether or not this file produced an output. """
+
+    fragment_data_path: pathlib.Path
+    """ Sidecar file for tracking fragment spans; used for resuming stream download. """
+
+    @property
+    def paths(self) -> Iterable[pathlib.Path]:
+        yield from (self.path, self.fragment_data_path)
 
 
 class DownloadJobFinishedMessage(BaseMessage, tag="download-finished"):

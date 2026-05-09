@@ -692,7 +692,12 @@ async def _run(args: "YouTubeDownloader") -> None:
                 )
             )
             broadcast_file_list.extend(
-                YouTubeStreamFileInfo(path=path, broadcast_id=manifest_id, muxed=False)
+                YouTubeStreamFileInfo(
+                    path=path,
+                    broadcast_id=manifest_id,
+                    muxed=False,
+                    fragment_data_path=path.with_suffix(".fragdata.txt"),
+                )
                 for path in output_stream_paths
             )
             continue
@@ -722,7 +727,12 @@ async def _run(args: "YouTubeDownloader") -> None:
         mux_success = proc.returncode == 0
 
         broadcast_file_list.extend(
-            YouTubeStreamFileInfo(path=path, broadcast_id=manifest_id, muxed=mux_success)
+            YouTubeStreamFileInfo(
+                path=path,
+                broadcast_id=manifest_id,
+                muxed=mux_success,
+                fragment_data_path=path.with_suffix(".fragdata.txt"),
+            )
             for path in output_stream_paths
         )
 
@@ -746,8 +756,12 @@ async def _run(args: "YouTubeDownloader") -> None:
 
     if not args.keep_ts_files:
         for broadcast_file in broadcast_file_list:
-            if broadcast_file.muxed:
-                broadcast_file.path.unlink()
+            if not broadcast_file.muxed:
+                continue
+            broadcast_file.path.unlink()
+            fragment_file = broadcast_file.fragment_data_path
+            if fragment_file and fragment_file.exists():
+                fragment_file.unlink()
 
     try:
         # bail if we fail to make the directory
