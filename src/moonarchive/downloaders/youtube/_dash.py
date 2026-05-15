@@ -434,7 +434,7 @@ async def frag_iterator(
             if not cipher_solver_url:
                 raise RuntimeError("Unable to decode 'n' param in streaming data response")
             decoded_n_param = await decode_n_param_via_cipher_server(
-                cipher_solver_url, ytcfg.player_js_url, qs.get("n")
+                cipher_solver_url, ytcfg.player_js_url, qs["n"]
             )
 
         # rewrite the url with the decoded 'n'

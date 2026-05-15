@@ -38,11 +38,8 @@ _sts_cache: dict[SignatureTimestampKey, str] = {}
 
 
 async def decode_n_param_via_cipher_server(
-    server_base_url: str, player_url: str, n_param: str | None
-) -> str | None:
-    if not n_param:
-        return None
-
+    server_base_url: str, player_url: str, n_param: str
+) -> str:
     status_queue = status_queue_ctx.get()
 
     param_key = NParamKey(player_url, n_param)
@@ -60,11 +57,14 @@ async def decode_n_param_via_cipher_server(
                 sig_r = await client.post(
                     "decrypt_signature", json={"n_param": n_param, "player_url": player_url}
                 )
+                sig_r.raise_for_status()
                 sig_r_data = sig_r.json()
-                decrypted_n_sig = sig_r_data.get("decrypted_n_sig")
-                _player_n_param_cache[param_key] = decrypted_n_sig
-                return decrypted_n_sig
-            except (httpx.TimeoutException, httpx.ConnectError):
+
+                if "decrypted_n_sig" in sig_r_data:
+                    decrypted_n_sig = sig_r_data["decrypted_n_sig"]
+                    _player_n_param_cache[param_key] = decrypted_n_sig
+                    return decrypted_n_sig
+            except (httpx.HTTPStatusError, httpx.TimeoutException, httpx.ConnectError):
                 pass
 
             if status_queue:
