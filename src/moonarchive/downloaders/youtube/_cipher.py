@@ -91,9 +91,10 @@ async def get_signature_timestamp_via_cipher_server(
             try:
                 sts_r = await client.post("get_sts", json={"player_url": player_url})
                 sts_r_data = sts_r.json()
-                sts = sts_r_data.get("sts")
-                _sts_cache[key] = sts
-                return sts
+                if "sts" in sts_r_data:
+                    sts = sts_r_data["sts"]
+                    _sts_cache[key] = sts
+                    return sts
             except (httpx.TimeoutException, httpx.ConnectError):
                 pass
 
