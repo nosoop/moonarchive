@@ -382,6 +382,12 @@ async def _run(args: "YouTubeDownloader") -> None:
             if resp.streaming_data:
                 continue
 
+            # missing streaming data; playability status likely different on the player itself
+            # check that to avoid getting into a player polling loop
+            if not resp.playability_status:
+                raise ValueError("streaming data and playability status missing from player")
+            heartbeat = YTPlayerHeartbeatResponse(playability_status=resp.playability_status)
+
         # if LIVE_STREAM_OFFLINE then stream may have finished
         if heartbeat.playability_status.status in (
             "UNPLAYABLE",
