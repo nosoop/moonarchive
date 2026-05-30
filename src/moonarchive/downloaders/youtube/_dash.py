@@ -122,7 +122,9 @@ async def frag_iterator(
         if resp.playability_status.live_streamability
         else None
     )
-    current_manifest_id = qs["id"]
+
+    # see `YTPlayerStreamingData.dash_manifest_id`
+    current_manifest_id, *_ = qs["id"].partition("~")
 
     if selector.major_type == YTPlayerMediaType.VIDEO and selected_format.quality_label:
         status_queue.put_nowait(
@@ -450,11 +452,12 @@ async def frag_iterator(
             selected_url_parse = urllib.parse.urlparse(sig_qs["url"])
             qs = dict(urllib.parse.parse_qsl(selected_url_parse.query))
 
-        if current_manifest_id != qs.get("id"):
+        updated_manifest_id, *_ = qs["id"].partition("~")
+        if current_manifest_id != updated_manifest_id:
             # manifest ID differs; we no longer have access to the broadcast this task is for
             return
 
-        current_manifest_id = qs["id"]
+        current_manifest_id = updated_manifest_id
 
         decoded_n_param = None
         if "n" in qs:

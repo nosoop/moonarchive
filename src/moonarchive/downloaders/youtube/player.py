@@ -158,18 +158,24 @@ class YTPlayerStreamingData(YTJSONStruct):
         #
         # parameters in the manifest are slash-delimited
         # extract the subpath within 'id'
+        id: str
         if not self.dash_manifest_url:
             if not self.server_abr_streaming_url:
                 return None
             sabr_urlp = urllib.parse.urlparse(self.server_abr_streaming_url)
             sabr_qs = dict(urllib.parse.parse_qsl(sabr_urlp.query))
-            return sabr_qs["id"]
-
-        params = urllib.parse.urlparse(self.dash_manifest_url).path.split("/")
-        _, id, *_ = itertools.dropwhile(lambda x: x != "id", params)
+            id = sabr_qs["id"]
+        else:
+            params = urllib.parse.urlparse(self.dash_manifest_url).path.split("/")
+            _, id, *_ = itertools.dropwhile(lambda x: x != "id", params)
 
         # it's possible that this returns something in the form {video_id}.{id}~{unknown}
-        # e.g. xOdgbNQ_lsE.1~45623198
+        # e.g. xOdgbNQ_lsE.1~45623198, RjvOMrt5bTY.1~45730710
+        #
+        # it appears to be consistent within a broadcast, but normalize it to be safe
+        #
+        # TODO: avoid making this visible to the end-user messages
+        #
         # we should be fine extracting the component preceding the tilde if it's present
         id_base, *_ = id.partition("~")
         return id_base
