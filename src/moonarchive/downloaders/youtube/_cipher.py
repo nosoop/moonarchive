@@ -40,7 +40,7 @@ _sts_cache: dict[SignatureTimestampKey, str] = {}
 async def decode_n_param_via_cipher_server(
     server_base_url: str, player_url: str, n_param: str
 ) -> str:
-    status_queue = status_queue_ctx.get()
+    status_queue = status_queue_ctx.get(None)
 
     param_key = NParamKey(player_url, n_param)
 
@@ -79,7 +79,7 @@ async def decode_n_param_via_cipher_server(
 async def get_signature_timestamp_via_cipher_server(
     server_base_url: str, player_url: str
 ) -> str:
-    status_queue = status_queue_ctx.get()
+    status_queue = status_queue_ctx.get(None)
     key = SignatureTimestampKey(player_url)
     async with (
         httpx.AsyncClient(headers=_CIPHER_SOLVER_HEADERS, base_url=server_base_url) as client,
