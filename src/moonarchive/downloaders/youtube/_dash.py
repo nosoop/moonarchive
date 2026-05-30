@@ -74,20 +74,39 @@ async def frag_iterator(
     available_formats = list(resp.streaming_data.adaptive_formats)
 
     selected_format, *_ = selector.select(available_formats) or (None,)
-    if not selected_format or not selected_format.url:
+    if not selected_format or (
+        not selected_format.url and not selected_format.signature_cipher
+    ):
         raise ValueError(f"Could not meet criteria format for format selector {selector}")
     itag = selected_format.itag
 
-    selected_url_parse = urllib.parse.urlparse(selected_format.url)
-    qs: dict[str, str] = dict(urllib.parse.parse_qsl(selected_url_parse.query))
+    status_queue = status_queue_ctx.get()
+
+    qs: dict[str, str]
+    sig_qs: dict[str, str] = {}
     decoded_n_param = None
+    decoded_sig = None
+    if selected_format.url:
+        selected_url_parse = urllib.parse.urlparse(selected_format.url)
+        qs = dict(urllib.parse.parse_qsl(selected_url_parse.query))
+        status_queue.put_nowait(messages.StringMessage("Using plain URL"))
+    elif selected_format.signature_cipher:
+        sig_qs = dict(urllib.parse.parse_qsl(selected_format.signature_cipher))
+        selected_url_parse = urllib.parse.urlparse(sig_qs["url"])
+        qs = dict(urllib.parse.parse_qsl(selected_url_parse.query))
+        status_queue.put_nowait(
+            messages.StringMessage("Using URL retrieved from signature challenge")
+        )
+
     if "n" in qs:
         cipher_solver_url = cipher_solver_url_ctx.get()
         if not cipher_solver_url:
             raise RuntimeError("Unable to decode 'n' param in streaming data response")
-        decoded_n_param = await decode_n_param_via_cipher_server(
-            cipher_solver_url, ytcfg.player_js_url, qs["n"]
+        decrypt_result = await decode_n_param_via_cipher_server(
+            cipher_solver_url, ytcfg.player_js_url, qs["n"], None
         )
+        decoded_n_param = decrypt_result.decrypted_n_sig
+        decoded_sig = decrypt_result.decrypted_signature
 
     timeout = selected_format.target_duration_sec
     if not timeout:
@@ -104,8 +123,6 @@ async def frag_iterator(
         else None
     )
     current_manifest_id = qs["id"]
-
-    status_queue = status_queue_ctx.get()
 
     if selector.major_type == YTPlayerMediaType.VIDEO and selected_format.quality_label:
         status_queue.put_nowait(
@@ -142,6 +159,8 @@ async def frag_iterator(
     url = urllib.parse.urlunparse(selected_url_parse._replace(query=""))
 
     peek_qparams = q_new.copy()
+    if decoded_sig and "sp" in sig_qs:
+        peek_qparams += [(sig_qs["sp"], decoded_sig)]
     if po_token:
         peek_qparams += [("pot", po_token)]
 
@@ -162,6 +181,8 @@ async def frag_iterator(
             req_task.cancel()
 
         qparams = q_new.copy()
+        if decoded_sig and "sp" in sig_qs:
+            qparams += [(sig_qs["sp"], decoded_sig)]
         if po_token:
             qparams += [("pot", po_token)]
 
@@ -415,12 +436,19 @@ async def frag_iterator(
         available_formats = list(resp.streaming_data.adaptive_formats)
 
         selected_format, *_ = selector.select(available_formats) or (None,)
-        if not selected_format or not selected_format.url:
+        if not selected_format or (
+            not selected_format.url and not selected_format.signature_cipher
+        ):
             raise ValueError(f"Could not meet criteria format for format selector {selector}")
         itag = selected_format.itag
 
-        selected_url_parse = urllib.parse.urlparse(selected_format.url)
-        qs = dict(urllib.parse.parse_qsl(selected_url_parse.query))
+        if selected_format.url:
+            selected_url_parse = urllib.parse.urlparse(selected_format.url)
+            qs = dict(urllib.parse.parse_qsl(selected_url_parse.query))
+        elif selected_format.signature_cipher:
+            sig_qs = dict(urllib.parse.parse_qsl(selected_format.signature_cipher))
+            selected_url_parse = urllib.parse.urlparse(sig_qs["url"])
+            qs = dict(urllib.parse.parse_qsl(selected_url_parse.query))
 
         if current_manifest_id != qs.get("id"):
             # manifest ID differs; we no longer have access to the broadcast this task is for
@@ -433,9 +461,11 @@ async def frag_iterator(
             cipher_solver_url = cipher_solver_url_ctx.get()
             if not cipher_solver_url:
                 raise RuntimeError("Unable to decode 'n' param in streaming data response")
-            decoded_n_param = await decode_n_param_via_cipher_server(
-                cipher_solver_url, ytcfg.player_js_url, qs["n"]
+            decrypt_result = await decode_n_param_via_cipher_server(
+                cipher_solver_url, ytcfg.player_js_url, qs["n"], None
             )
+            decoded_n_param = decrypt_result.decrypted_n_sig
+            decoded_sig = decrypt_result.decrypted_signature
 
         # rewrite the url with the decoded 'n'
         q_new = []

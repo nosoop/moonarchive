@@ -109,6 +109,8 @@ class YTPlayerAdaptiveFormats(YTJSONStruct):
     target_duration_sec: Optional[float] = None
     url: Optional[str] = None
 
+    signature_cipher: str | None = None
+
     # video stream-specific fields
     width: Optional[int] = None
     height: Optional[int] = None

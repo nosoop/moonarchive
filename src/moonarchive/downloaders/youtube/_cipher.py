@@ -2,6 +2,7 @@
 
 import asyncio
 import collections
+import dataclasses
 import itertools
 from contextvars import ContextVar
 from typing import NamedTuple
@@ -23,10 +24,17 @@ _CIPHER_SOLVER_HEADERS = {"user-agent": "moonarchive (https://github.com/nosoop/
 class NParamKey(NamedTuple):
     player_url: str
     n_param: str
+    encrypted_signature: str | None
+
+
+@dataclasses.dataclass
+class NParamResponse:
+    decrypted_n_sig: str
+    decrypted_signature: str | None
 
 
 _player_n_param_lock: dict[NParamKey, asyncio.Lock] = collections.defaultdict(asyncio.Lock)
-_player_n_param_cache: dict[NParamKey, str] = {}
+_player_n_param_cache: dict[NParamKey, NParamResponse] = {}
 
 
 class SignatureTimestampKey(NamedTuple):
@@ -38,11 +46,11 @@ _sts_cache: dict[SignatureTimestampKey, str] = {}
 
 
 async def decode_n_param_via_cipher_server(
-    server_base_url: str, player_url: str, n_param: str
-) -> str:
+    server_base_url: str, player_url: str, n_param: str, encrypted_signature: str | None
+) -> NParamResponse:
     status_queue = status_queue_ctx.get(None)
 
-    param_key = NParamKey(player_url, n_param)
+    param_key = NParamKey(player_url, n_param, encrypted_signature)
 
     # TODO: support more solvers such as yt-dlp/ejs
     async with (
@@ -54,16 +62,20 @@ async def decode_n_param_via_cipher_server(
             return _player_n_param_cache[param_key]
         for n in itertools.count(1):
             try:
-                sig_r = await client.post(
-                    "decrypt_signature", json={"n_param": n_param, "player_url": player_url}
-                )
+                request_params = {"n_param": n_param, "player_url": player_url}
+                if encrypted_signature:
+                    request_params["encrypted_signature"] = encrypted_signature
+
+                sig_r = await client.post("decrypt_signature", json=request_params)
                 sig_r.raise_for_status()
                 sig_r_data = sig_r.json()
 
                 if "decrypted_n_sig" in sig_r_data:
-                    decrypted_n_sig = sig_r_data["decrypted_n_sig"]
-                    _player_n_param_cache[param_key] = decrypted_n_sig
-                    return decrypted_n_sig
+                    result = NParamResponse(
+                        sig_r_data["decrypted_n_sig"], sig_r_data.get("decrypted_signature")
+                    )
+                    _player_n_param_cache[param_key] = result
+                    return result
             except (httpx.HTTPStatusError, httpx.TimeoutException, httpx.ConnectError):
                 pass
 
