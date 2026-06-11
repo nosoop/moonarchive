@@ -376,6 +376,7 @@ async def _run(args: "YouTubeDownloader") -> None:
     heartbeat_token = resp.heartbeat_params.heartbeat_token if resp.heartbeat_params else None
     heartbeat_token_ctx.set(heartbeat_token)
 
+    use_initial_player_response = resp.streaming_data is not None
     while not resp.streaming_data:
         if heartbeat.playability_status.status == "OK":
             resp = await extract_player_response(args.url)
@@ -604,7 +605,7 @@ async def _run(args: "YouTubeDownloader") -> None:
         # reuse initial player response for the first broadcast download
         # this only works if we use the corresponding STS from the original page response, and
         # if the stream isn't finished
-        if resp.playability_status.live_streamability:
+        if use_initial_player_response and resp.playability_status.live_streamability:
             resp_broadcast_key = resp.playability_status.live_streamability.broadcast_id
             if resp_broadcast_key and not args.force_player_js_url:
                 video_stream_dl = tg.create_task(stream_downloader(resp, vidsel, workdir))
