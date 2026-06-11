@@ -11,6 +11,7 @@ import httpx
 import msgspec
 
 from ...models import messages as messages
+from ...util.url import update_qsl
 from ._cipher import cipher_solver_url_ctx, decode_n_param_via_cipher_server
 from ._format import FormatSelector
 from ._innertube import (
@@ -84,8 +85,7 @@ async def frag_iterator(
 
     qs: dict[str, str]
     sig_qs: dict[str, str] = {}
-    decoded_n_param = None
-    decoded_sig = None
+
     if selected_format.url:
         selected_url_parse = urllib.parse.urlparse(selected_format.url)
         qs = dict(urllib.parse.parse_qsl(selected_url_parse.query))
@@ -98,6 +98,8 @@ async def frag_iterator(
             messages.StringMessage("Using URL retrieved from signature challenge")
         )
 
+    # query param replacements and additions for player
+    q_player: dict[str, str] = {}
     if "n" in qs:
         cipher_solver_url = cipher_solver_url_ctx.get()
         if not cipher_solver_url:
@@ -105,8 +107,9 @@ async def frag_iterator(
         decrypt_result = await decode_n_param_via_cipher_server(
             cipher_solver_url, ytcfg.player_js_url, qs["n"], sig_qs.get("s")
         )
-        decoded_n_param = decrypt_result.decrypted_n_sig
-        decoded_sig = decrypt_result.decrypted_signature
+        q_player["n"] = decrypt_result.decrypted_n_sig
+        if decrypt_result.decrypted_signature:
+            q_player[sig_qs["sp"]] = decrypt_result.decrypted_signature
 
     timeout = selected_format.target_duration_sec
     if not timeout:
@@ -150,23 +153,14 @@ async def frag_iterator(
     reqs: list[tuple[int, asyncio.Task]] = []
 
     po_token = po_token_ctx.get()
-
-    # rewrite the url with the decoded 'n'
-    q_new: list[tuple[str, str | int | float | bool | None]] = []
-    for name, value in urllib.parse.parse_qsl(selected_url_parse.query):
-        if name == "n" and decoded_n_param:
-            value = decoded_n_param
-        q_new.append((name, value))
+    if po_token:
+        q_player["pot"] = po_token
 
     url = urllib.parse.urlunparse(selected_url_parse._replace(query=""))
+    selected_urlq = urllib.parse.parse_qsl(selected_url_parse.query)
+    qparams = update_qsl(list(selected_urlq), q_player)
 
-    peek_qparams = q_new.copy()
-    if decoded_sig and "sp" in sig_qs:
-        peek_qparams += [(sig_qs["sp"], decoded_sig)]
-    if po_token:
-        peek_qparams += [("pot", po_token)]
-
-    frag_peek = await client.head(url, params=peek_qparams)
+    frag_peek = await client.head(url, params=qparams)
     head_seq = int(frag_peek.headers.get("X-Head-Seqnum", 0))
 
     # there is a limit to the fragments that can be obtained in long-running streams
@@ -181,12 +175,6 @@ async def frag_iterator(
         # clear any outstanding requests from the previous iteration
         for req_seq, req_task in reqs:
             req_task.cancel()
-
-        qparams = q_new.copy()
-        if decoded_sig and "sp" in sig_qs:
-            qparams += [(sig_qs["sp"], decoded_sig)]
-        if po_token:
-            qparams += [("pot", po_token)]
 
         fragment_access_expired = False
 
@@ -459,7 +447,6 @@ async def frag_iterator(
 
         current_manifest_id = updated_manifest_id
 
-        decoded_n_param = None
         if "n" in qs:
             cipher_solver_url = cipher_solver_url_ctx.get()
             if not cipher_solver_url:
@@ -467,14 +454,10 @@ async def frag_iterator(
             decrypt_result = await decode_n_param_via_cipher_server(
                 cipher_solver_url, ytcfg.player_js_url, qs["n"], sig_qs.get("s")
             )
-            decoded_n_param = decrypt_result.decrypted_n_sig
-            decoded_sig = decrypt_result.decrypted_signature
-
-        # rewrite the url with the decoded 'n'
-        q_new = []
-        for name, value in urllib.parse.parse_qsl(selected_url_parse.query):
-            if name == "n" and decoded_n_param:
-                value = decoded_n_param
-            q_new.append((name, value))
+            q_player["n"] = decrypt_result.decrypted_n_sig
+            if decrypt_result.decrypted_signature:
+                q_player[sig_qs["sp"]] = decrypt_result.decrypted_signature
 
         url = urllib.parse.urlunparse(selected_url_parse._replace(query=""))
+        selected_urlq = urllib.parse.parse_qsl(selected_url_parse.query)
+        qparams = update_qsl(list(selected_urlq), q_player)
