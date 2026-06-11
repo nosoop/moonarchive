@@ -383,16 +383,19 @@ async def _run(args: "YouTubeDownloader") -> None:
     if args.dry_run:
         return
 
-    video_id = resp.video_details.video_id if resp.video_details else None
+    if not resp.video_details.video_id:
+        raise ValueError("no video details in initial player response")
+
+    video_id = resp.video_details.video_id
     heartbeat = YTPlayerHeartbeatResponse(playability_status=resp.playability_status)
 
     heartbeat_token = resp.heartbeat_params.heartbeat_token if resp.heartbeat_params else None
     heartbeat_token_ctx.set(heartbeat_token)
 
-    use_initial_player_response = resp.streaming_data is not None
     while not resp.streaming_data:
         if heartbeat.playability_status.status == "OK":
-            resp = await extract_player_response(args.url)
+            # TODO refresh ytcfg?
+            resp = await _get_web_player_response(video_id)
             if resp.streaming_data:
                 continue
 
@@ -458,14 +461,7 @@ async def _run(args: "YouTubeDownloader") -> None:
             status.queue.put_nowait(messages.StreamWaitingMessage(None))
 
         await asyncio.sleep(seconds_wait)
-        if video_id:
-            try:
-                heartbeat = await _get_live_stream_status(video_id)
-                continue
-            except RuntimeError:
-                pass
-        resp = await extract_player_response(args.url)
-        heartbeat = YTPlayerHeartbeatResponse(playability_status=resp.playability_status)
+        heartbeat = await _get_live_stream_status(video_id)
 
     if args.list_formats:
         # TODO properly report all formats
@@ -478,7 +474,6 @@ async def _run(args: "YouTubeDownloader") -> None:
     assert resp.video_details
     assert resp.microformat
     assert resp.microformat.live_broadcast_details
-    video_id = resp.video_details.video_id
     status.queue.put_nowait(
         messages.StreamInfoMessage(
             resp.video_details.author,
@@ -489,7 +484,7 @@ async def _run(args: "YouTubeDownloader") -> None:
                 (thumb.url for thumb in sorted(resp.microformat.thumbnails, reverse=True)),
                 None,
             ),
-            resp.video_details.video_id,
+            video_id,
         )
     )
 
@@ -501,7 +496,7 @@ async def _run(args: "YouTubeDownloader") -> None:
 
     tmplvars = OutputPathTemplateVars(
         title=resp.video_details.title.translate(sanitize_table),
-        id=resp.video_details.video_id,
+        id=video_id,
         video_id=video_id,
         channel_id=resp.video_details.channel_id,
         channel=resp.video_details.author.translate(sanitize_table),
@@ -615,9 +610,7 @@ async def _run(args: "YouTubeDownloader") -> None:
                 )
 
         # reuse initial player response for the first broadcast download
-        # this only works if we use the corresponding STS from the original page response, and
-        # if the stream isn't finished
-        if use_initial_player_response and resp.playability_status.live_streamability:
+        if resp.playability_status.live_streamability:
             resp_broadcast_key = resp.playability_status.live_streamability.broadcast_id
             if resp_broadcast_key and not args.force_player_js_url:
                 video_stream_dl = tg.create_task(stream_downloader(resp, vidsel, workdir))
