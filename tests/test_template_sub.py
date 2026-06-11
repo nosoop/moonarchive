@@ -16,7 +16,7 @@ SAMPLE_VARS = OutputPathTemplateVars(
     video_id="NpGLZlDMHZs",
     channel_id="UCWQtYtq9EOB4-I5P-3fh8lA",
     channel="Kanade Ch. 音乃瀬奏 ‐ ReGLOSS",
-    _start_datetime=datetime.datetime.fromisoformat("2025-08-25T12:03:33Z"),
+    start_datetime=datetime.datetime.fromisoformat("2025-08-25T12:03:33Z"),
 )
 
 
@@ -26,6 +26,10 @@ SAMPLE_VARS = OutputPathTemplateVars(
         (
             "%(title)s-%(id)s",
             "【 PEAK 】4人で協力して山を登るゲーム？！やってみる！！【音乃瀬奏視点】#hololiveDEV_IS #ReGLOSS-NpGLZlDMHZs",
+        ),
+        (
+            "[%(start_date)s-%(start_time)s] %(id)s",
+            "[20250825-120333] NpGLZlDMHZs",
         ),
     ],
 )

@@ -500,8 +500,8 @@ async def _run(args: "YouTubeDownloader") -> None:
         video_id=video_id,
         channel_id=resp.video_details.channel_id,
         channel=resp.video_details.author.translate(sanitize_table),
+        start_datetime=resp.microformat.live_broadcast_details.start_datetime,
     )
-    tmplvars.start_datetime = resp.microformat.live_broadcast_details.start_datetime
 
     # calculate our maximum allowed title length from a filename without the title with a large
     # broadcast ID

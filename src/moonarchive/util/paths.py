@@ -4,7 +4,7 @@ import dataclasses
 import datetime
 import pathlib
 import string
-from typing import ClassVar
+from typing import Any, ClassVar
 
 # table to remove illegal characters on Windows
 # we use this to match ytarchive file output behavior
@@ -23,6 +23,18 @@ def _string_byte_trim(input: str, length: int) -> str:
         return bytes_[:length].decode()
     except UnicodeDecodeError as err:
         return bytes_[: err.start].decode()
+
+
+OUTPUT_DATETIME_FIELDS = {
+    "start_date": "%Y%m%d",
+    "start_time": "%H%M%S",
+    "year": "%Y",
+    "month": "%m",
+    "day": "%d",
+    "hours": "%H",
+    "minutes": "%M",
+    "seconds": "%S",
+}
 
 
 @dataclasses.dataclass(kw_only=True)
@@ -49,41 +61,27 @@ class OutputPathTemplateVars:
 
     channel_id: str
     channel: str
-    start_date: str = dataclasses.field(init=False)
-    start_time: str = dataclasses.field(init=False)
-    year: str = dataclasses.field(init=False)
-    month: str = dataclasses.field(init=False)
-    day: str = dataclasses.field(init=False)
-    hours: str = dataclasses.field(init=False)
-    minutes: str = dataclasses.field(init=False)
-    seconds: str = dataclasses.field(init=False)
-    _start_datetime: datetime.datetime = dataclasses.field(
-        default_factory=datetime.datetime.now
-    )
 
-    def __post_init__(self):
-        self.start_datetime = self._start_datetime
+    start_datetime: datetime.datetime = dataclasses.field(default_factory=datetime.datetime.now)
 
-    @property
-    def start_datetime(self) -> datetime.datetime:
-        return self._start_datetime
+    # field stubs used to temporarily ensure compatibility with ``dataclasses.fields`` usage
+    start_date: str | None = dataclasses.field(init=False, default=None)
+    start_time: str | None = dataclasses.field(init=False, default=None)
+    year: str | None = dataclasses.field(init=False, default=None)
+    month: str | None = dataclasses.field(init=False, default=None)
+    day: str | None = dataclasses.field(init=False, default=None)
+    hours: str | None = dataclasses.field(init=False, default=None)
+    minutes: str | None = dataclasses.field(init=False, default=None)
+    seconds: str | None = dataclasses.field(init=False, default=None)
 
-    @start_datetime.setter
-    def start_datetime(self, value: datetime.datetime) -> None:
-        self._start_datetime = value
-        (
-            self.start_date,
-            self.start_time,
-            self.year,
-            self.month,
-            self.day,
-            self.hours,
-            self.minutes,
-            self.seconds,
-        ) = (
-            self._start_datetime.strftime(df)
-            for df in ("%Y%m%d", "%H%M%S", "%Y", "%m", "%d", "%H", "%M", "%S")
-        )
+    def to_dict(self) -> dict[str, Any]:
+        """
+        Returns a dictionary including additional datetime-based placeholder values.
+        """
+        return dataclasses.asdict(self) | {
+            field: self.start_datetime.strftime(ftime)
+            for field, ftime in OUTPUT_DATETIME_FIELDS.items()
+        }
 
 
 class OutputPathTemplate(string.Template):
@@ -92,7 +90,7 @@ class OutputPathTemplate(string.Template):
     """
 
     def to_path(self, outvars: OutputPathTemplateVars, /, suffix: str, **kwds) -> pathlib.Path:
-        return pathlib.Path(self.substitute(dataclasses.asdict(outvars), **kwds) + suffix)
+        return pathlib.Path(self.substitute(outvars.to_dict(), **kwds) + suffix)
 
     def get_max_title_byte_length(self, outvars: OutputPathTemplateVars) -> int:
         """
@@ -112,6 +110,15 @@ class OutputPathTemplate(string.Template):
         # filename (basename?) length constraints like 240, so the revised hard limit is 213
         test_path = self.to_path(outvars, title="", id="xxxxxxxxxxx.00", suffix=".description")
         return 236 - len(test_path.name.encode())
+
+    def get_invalid_identifiers(self) -> set[str]:
+        """
+        Returns identifiers referenced that do not map to an OutputPathTemplateVars field.
+        Consumers should validate that this is an empty set and fail otherwise.
+        """
+        var_names = set(field.name for field in dataclasses.fields(OutputPathTemplateVars))
+        template_idents = set(self.get_identifiers())
+        return template_idents - var_names
 
 
 class OutputPathTemplateCompat(OutputPathTemplate):
