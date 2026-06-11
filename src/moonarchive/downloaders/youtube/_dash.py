@@ -103,7 +103,7 @@ async def frag_iterator(
         if not cipher_solver_url:
             raise RuntimeError("Unable to decode 'n' param in streaming data response")
         decrypt_result = await decode_n_param_via_cipher_server(
-            cipher_solver_url, ytcfg.player_js_url, qs["n"], None
+            cipher_solver_url, ytcfg.player_js_url, qs["n"], sig_qs.get("s")
         )
         decoded_n_param = decrypt_result.decrypted_n_sig
         decoded_sig = decrypt_result.decrypted_signature
@@ -465,7 +465,7 @@ async def frag_iterator(
             if not cipher_solver_url:
                 raise RuntimeError("Unable to decode 'n' param in streaming data response")
             decrypt_result = await decode_n_param_via_cipher_server(
-                cipher_solver_url, ytcfg.player_js_url, qs["n"], None
+                cipher_solver_url, ytcfg.player_js_url, qs["n"], sig_qs.get("s")
             )
             decoded_n_param = decrypt_result.decrypted_n_sig
             decoded_sig = decrypt_result.decrypted_signature
