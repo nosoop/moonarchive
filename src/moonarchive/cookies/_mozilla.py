@@ -145,12 +145,12 @@ class MozillaBrowserCookieSource(BaseCookieSource):
     """A container name to use.  Specify `None` to use the default container."""
 
     def __post_init__(self):
-        # attempt to generate the context ID so we can throw if it fails
-        self.container_context_id
         if not MOZ_COOKIE_SOURCE_AVAILABLE:
             raise AssertionError(
                 "Cannot instantiate Mozilla browser source; aiosqlite is missing"
             )
+        # attempt to generate the context ID so we can throw if it fails
+        self.container_context_id
 
     async def get_cookies(self) -> http.cookiejar.CookieJar:
         async with aiosqlite.connect(f"file:/{self.cookie_db}?mode=ro", uri=True) as db:

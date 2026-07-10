@@ -17,11 +17,7 @@ import av
 import httpx
 import msgspec
 
-from ...cookies import (
-    MOZ_COOKIE_SOURCE_AVAILABLE,
-    CookieTextFileSource,
-    MozillaBrowserCookieSource,
-)
+from ...cookies import CookieTextFileSource, MozillaBrowserCookieSource
 from ...models import messages as messages
 from ...models.ffmpeg import FFMPEGProgress
 from ...output import BaseMessageHandler
@@ -316,8 +312,11 @@ async def _run(args: "YouTubeDownloader") -> None:
     cookie_file_ctx.set(args.cookie_file)
     cipher_solver_url_ctx.set(args.unstable_cipher_solver_url)
     if args.cookies_from_browser:
-        if args.cookies_from_browser == "firefox" and MOZ_COOKIE_SOURCE_AVAILABLE:
+        if args.cookies_from_browser == "firefox":
             # use builtin cookie support
+            #
+            # note: browser-cookie3 is out of date with firefox changes,
+            # so this may raise an assert
             if args.cookie_file is None:
                 raise ValueError("no cookie file specified for browser")
             cookiesrc_ctx.set(MozillaBrowserCookieSource(args.cookie_file))
