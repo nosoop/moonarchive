@@ -636,6 +636,20 @@ async def _run(args: "YouTubeDownloader") -> None:
                 broadcast_key = live_streamability.broadcast_id
                 if broadcast_key not in broadcast_tasks:
                     broadcast_resp = await _get_web_player_response(video_id)
+
+                    if not broadcast_resp.streaming_data:
+                        # new response has no streaming data - possibly went offline between
+                        # heartbeat check and player response fetch or tripped bot detection
+                        #
+                        # for now we assume the former and retry at the next heartbeat
+                        status.queue.put_nowait(
+                            messages.StringMessage(
+                                "No streaming data in player response retrieved for "
+                                f"new broadcast {broadcast_key}; reattempting at next heartbeat"
+                            )
+                        )
+                        continue
+
                     resp_broadcast_key = playability_status.live_streamability.broadcast_id
                     # ensure broadcast didn't change again since the heartbeat response
                     if resp_broadcast_key == broadcast_key:
