@@ -17,8 +17,14 @@ import typing
 import urllib.parse
 from typing import Self
 
-import aiosqlite
 import msgspec
+
+try:
+    import aiosqlite
+
+    MOZ_COOKIE_SOURCE_AVAILABLE = True
+except ModuleNotFoundError:
+    MOZ_COOKIE_SOURCE_AVAILABLE = False
 
 from ._base import BaseCookieSource
 
@@ -141,6 +147,10 @@ class MozillaBrowserCookieSource(BaseCookieSource):
     def __post_init__(self):
         # attempt to generate the context ID so we can throw if it fails
         self.container_context_id
+        if not MOZ_COOKIE_SOURCE_AVAILABLE:
+            raise AssertionError(
+                "Cannot instantiate Mozilla browser source; aiosqlite is missing"
+            )
 
     async def get_cookies(self) -> http.cookiejar.CookieJar:
         async with aiosqlite.connect(f"file:/{self.cookie_db}?mode=ro", uri=True) as db:

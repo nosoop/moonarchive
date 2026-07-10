@@ -1,3 +1,4 @@
 from ._base import BaseCookieSource as BaseCookieSource
+from ._mozilla import MOZ_COOKIE_SOURCE_AVAILABLE as MOZ_COOKIE_SOURCE_AVAILABLE
 from ._mozilla import MozillaBrowserCookieSource as MozillaBrowserCookieSource
 from ._textfile import CookieTextFileSource as CookieTextFileSource
