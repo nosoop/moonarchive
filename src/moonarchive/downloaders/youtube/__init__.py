@@ -473,7 +473,6 @@ async def _run(args: "YouTubeDownloader") -> None:
             format_disp = format
             format_disp.url = None
             status.queue.put_nowait(messages.StringMessage(str(format_disp)))
-        await asyncio.sleep(0)
         return
 
     assert resp.video_details
@@ -770,10 +769,6 @@ async def _run(args: "YouTubeDownloader") -> None:
                 )
             )
 
-    # if we only have one broadcast with an unexpected output count, the logs will never be
-    # rendered in the CLI - yield to other tasks here just in case
-    await asyncio.sleep(0)
-
     if not args.keep_ts_files:
         for broadcast_file in broadcast_file_list:
             if not broadcast_file.muxed:
@@ -877,6 +872,8 @@ class YouTubeDownloader(msgspec.Struct, kw_only=True):
 
     async def async_run(self) -> None:
         await _run(self)
+        # flush items in message handlers for CLI
+        await asyncio.sleep(0)
 
     def run(self) -> None:
-        asyncio.run(_run(self))
+        asyncio.run(self.async_run())
