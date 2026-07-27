@@ -98,10 +98,23 @@ gracefully recover, provided the stream contents are still available.
 The keepawake behavior only applies to the CLI application and is not active when using the
 module API.
 
+#### `aiocookies`
+
+This installs an optional dependency on [aiosqlite][], allowing moonarchive to access certain
+browsers' cookies on-demand whenever certain requests are made.
+
+Only Firefox-like browsers are supported at this time.
+
+This uses moonarchive's first-party implementation of fetching cookies asynchronously, so there
+is lower supply-chain risk by using this in place of `cookies`.
+
+[aiosqlite]: https://github.com/omnilib/aiosqlite
+
 #### `cookies`
 
 This installs an optional dependency on [browser-cookie3][], allowing moonarchive to access the
-browser's cookies on-demand whenever certain requests are made.
+browser's cookies on-demand whenever certain requests are made.  The `aiocookies` extra is also
+included when this is specified.
 
 With this extra, you can use `--cookies-from-browser` to specify a given browser to extract
 cookies from, and `--cookies` to specify the cookie database for that browser.
