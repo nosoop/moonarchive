@@ -112,9 +112,9 @@ async def extract_player_response(url: str) -> YTPlayerResponse:
                 )
                 await asyncio.sleep(6)
 
-        if not response_extractor.result:  # type: ignore
+        if not response_extractor.result:
             raise ValueError("Could not extract player response")
-        return msgspec.convert(response_extractor.result, type=YTPlayerResponse)  # type: ignore
+        return msgspec.convert(response_extractor.result, type=YTPlayerResponse)
 
 
 async def extract_yt_cfg(url: str) -> YTCFG:
@@ -134,9 +134,9 @@ async def extract_yt_cfg(url: str) -> YTCFG:
                 )
                 await asyncio.sleep(6)
 
-        if not response_extractor.result:  # type: ignore
+        if not response_extractor.result:
             raise ValueError("Could not extract YTCFG response")
-        return msgspec.convert(response_extractor.result, type=YTCFG)  # type: ignore
+        return msgspec.convert(response_extractor.result, type=YTCFG)
 
 
 async def _get_live_stream_status(video_id: str) -> YTPlayerHeartbeatResponse:
@@ -237,7 +237,7 @@ async def _get_web_player_response(video_id: str) -> YTPlayerResponse:
                     headers=headers,
                 )
                 result.raise_for_status()
-                return msgspec.json.decode(result.text, type=YTPlayerResponse)  # type: ignore
+                return msgspec.json.decode(result.text, type=YTPlayerResponse)
             except (httpx.HTTPStatusError, httpx.TransportError):
                 status_queue.put_nowait(
                     messages.StringMessage(

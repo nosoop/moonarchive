@@ -5,10 +5,13 @@ import json
 from typing import Type
 
 
-def create_json_object_extractor(decl: str) -> Type[html.parser.HTMLParser]:
-    class InternalHTMLParser(html.parser.HTMLParser):
+class JSONObjectExtractor(html.parser.HTMLParser):
+    result: dict | None
+
+
+def create_json_object_extractor(decl: str) -> Type[JSONObjectExtractor]:
+    class InternalHTMLParser(JSONObjectExtractor):
         in_script: bool = False
-        result = None
 
         def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
             self.in_script = tag == "script"
