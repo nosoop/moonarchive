@@ -331,7 +331,8 @@ async def _run(args: "YouTubeDownloader") -> None:
     cfg_extract.feed(page)
     if not cfg_extract.result:
         raise ValueError("Could not extract YTCFG response")
-    ytcfg = msgspec.convert(cfg_extract.result, type=YTCFG)
+    raw_ytcfg = cfg_extract.result
+    ytcfg = msgspec.convert(raw_ytcfg, type=YTCFG)
 
     attestation_challenge = extract_attestation_challenge(page)
 
@@ -600,6 +601,7 @@ async def _run(args: "YouTubeDownloader") -> None:
                 video_id,
                 ytcfg.innertube_context,
                 attestation_challenge,
+                raw_ytcfg,
             )
             if provider_response and provider_response.po_token:
                 po_token_ctx.set(provider_response.po_token)
