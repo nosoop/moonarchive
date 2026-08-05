@@ -31,7 +31,7 @@ from ...util.paths import (
 )
 from ._cipher import cipher_solver_url_ctx
 from ._dash import frag_iterator, num_parallel_downloads_ctx
-from ._extract import PlayerResponseExtractor, YTCFGExtractor
+from ._extract import PlayerResponseExtractor, YTCFGExtractor, extract_attestation_challenge
 from ._format import FormatSelector
 from ._innertube import _build_auth_from_cookies as _build_auth_from_cookies
 from ._innertube import (
@@ -333,6 +333,8 @@ async def _run(args: "YouTubeDownloader") -> None:
         raise ValueError("Could not extract YTCFG response")
     ytcfg = msgspec.convert(cfg_extract.result, type=YTCFG)
 
+    attestation_challenge = extract_attestation_challenge(page)
+
     if args.force_player_js_url:
         # "/s/player/9f4cc5e4/player_ias.vflset/en_US/base.js"
         ytcfg.player_js_url = args.force_player_js_url
@@ -594,7 +596,10 @@ async def _run(args: "YouTubeDownloader") -> None:
             for playercfg in ytcfg.web_player_context_configs.values()
         ):
             provider_response = await get_potoken(
-                args.unstable_bgutil_pot_provider_url, video_id, ytcfg.innertube_context
+                args.unstable_bgutil_pot_provider_url,
+                video_id,
+                ytcfg.innertube_context,
+                attestation_challenge,
             )
             if provider_response and provider_response.po_token:
                 po_token_ctx.set(provider_response.po_token)
