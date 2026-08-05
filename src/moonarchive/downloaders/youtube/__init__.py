@@ -329,9 +329,9 @@ async def _run(args: "YouTubeDownloader") -> None:
 
     cfg_extract = YTCFGExtractor()
     cfg_extract.feed(page)
-    if not cfg_extract.result:  # type: ignore
+    if not cfg_extract.result:
         raise ValueError("Could not extract YTCFG response")
-    ytcfg = msgspec.convert(cfg_extract.result, type=YTCFG)  # type: ignore
+    ytcfg = msgspec.convert(cfg_extract.result, type=YTCFG)
 
     if args.force_player_js_url:
         # "/s/player/9f4cc5e4/player_ias.vflset/en_US/base.js"
@@ -344,9 +344,9 @@ async def _run(args: "YouTubeDownloader") -> None:
 
     player_extract = PlayerResponseExtractor()
     player_extract.feed(page)
-    if not player_extract.result:  # type: ignore
+    if not player_extract.result:
         raise ValueError("Could not extract player response")
-    resp = msgspec.convert(player_extract.result, type=YTPlayerResponse)  # type: ignore
+    resp = msgspec.convert(player_extract.result, type=YTPlayerResponse)
 
     if resp.playability_status.status in ("ERROR", "LOGIN_REQUIRED", "UNPLAYABLE"):
         status.queue.put_nowait(
