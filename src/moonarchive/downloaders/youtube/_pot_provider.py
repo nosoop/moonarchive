@@ -21,6 +21,7 @@ class POTokenProviderRequest(msgspec.Struct, omit_defaults=True):
     proxy: str | None = None
     bypass_cache: bool | None = None
     innertube_context: dict | None = None
+    challenge: str | None = None
 
 
 class POTokenProviderResponse(msgspec.Struct, rename="camel"):
@@ -50,14 +51,23 @@ async def get_provider_version(base_url: str | None) -> POTokenPingResponse | No
 
 
 async def get_potoken(
-    base_url: str | None, content_binding: str | None, innertube_context: dict | None = None
+    base_url: str | None,
+    content_binding: str | None,
+    innertube_context: dict | None = None,
+    attestation_challenge: str | None = None,
 ) -> POTokenProviderResponse | None:
     if base_url is None:
         return None
-    request = POTokenProviderRequest(content_binding=content_binding)
 
-    if innertube_context:
-        request.innertube_context = innertube_context
+    request = POTokenProviderRequest(
+        content_binding=content_binding,
+        innertube_context=innertube_context,
+        challenge=attestation_challenge,
+    )
+
+    # bypass the cache for now; the server only keys this on source address, meaning it might
+    # use a minter from a different session
+    request.bypass_cache = True
 
     for n in itertools.count(1):
         try:
